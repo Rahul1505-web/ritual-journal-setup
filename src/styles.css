@@ -142,3 +142,71 @@
     color: var(--color-foreground);
   }
 }
+
+/* ── TradeLog Pro: dark trading terminal theme ─────────────────────────── */
+@theme inline {
+  --color-profit: var(--profit);
+  --color-profit-foreground: var(--profit-foreground);
+  --color-loss: var(--loss);
+  --color-loss-foreground: var(--loss-foreground);
+  --color-warning: var(--warning);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+:root,
+.dark {
+  --radius: 0.875rem;
+  --background: oklch(0.178 0.013 270.6);
+  --foreground: oklch(0.974 0.005 275);
+  --card: oklch(0.232 0.02 271.8);
+  --card-foreground: oklch(0.974 0.005 275);
+  --popover: oklch(0.232 0.02 271.8);
+  --popover-foreground: oklch(0.974 0.005 275);
+  --primary: oklch(0.597 0.224 279.8);
+  --primary-foreground: oklch(0.99 0.005 275);
+  --secondary: oklch(0.275 0.027 272.2);
+  --secondary-foreground: oklch(0.974 0.005 275);
+  --muted: oklch(0.275 0.027 272.2);
+  --muted-foreground: oklch(0.653 0.03 276.6);
+  --accent: oklch(0.286 0.027 269.4);
+  --accent-foreground: oklch(0.974 0.005 275);
+  --destructive: oklch(0.678 0.213 15.8);
+  --destructive-foreground: oklch(0.99 0.005 275);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.597 0.224 279.8);
+  --surface: oklch(0.232 0.02 271.8);
+  --surface-2: oklch(0.286 0.027 269.4);
+  --profit: oklch(0.739 0.152 166.9);
+  --profit-foreground: oklch(0.178 0.013 270.6);
+  --loss: oklch(0.678 0.213 15.8);
+  --loss-foreground: oklch(0.99 0.005 275);
+  --warning: oklch(0.813 0.165 75);
+  --chart-1: oklch(0.597 0.224 279.8);
+  --chart-2: oklch(0.739 0.152 166.9);
+  --chart-3: oklch(0.678 0.213 15.8);
+  --chart-4: oklch(0.813 0.165 75);
+  --chart-5: oklch(0.715 0.154 284.7);
+  --sidebar: oklch(0.203 0.016 271);
+  --sidebar-foreground: oklch(0.974 0.005 275);
+  --sidebar-primary: oklch(0.597 0.224 279.8);
+  --sidebar-primary-foreground: oklch(0.99 0.005 275);
+  --sidebar-accent: oklch(0.286 0.027 269.4);
+  --sidebar-accent-foreground: oklch(0.974 0.005 275);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.597 0.224 279.8);
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+}

@@ -14,7 +14,117 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      rules: {
+        Row: {
+          created_at: string
+          id: string
+          rule_text: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          rule_text: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          rule_text?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trades: {
+        Row: {
+          chart_urls: string[]
+          created_at: string
+          direction: string
+          emotion: string
+          entry_price: number
+          exit_price: number
+          id: string
+          market_type: string
+          mistake_tags: string[]
+          notes: string
+          pnl: number
+          quantity: number
+          symbol: string
+          trade_date: string
+          trade_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          chart_urls?: string[]
+          created_at?: string
+          direction: string
+          emotion?: string
+          entry_price: number
+          exit_price: number
+          id?: string
+          market_type: string
+          mistake_tags?: string[]
+          notes?: string
+          pnl?: number
+          quantity: number
+          symbol: string
+          trade_date?: string
+          trade_type?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          chart_urls?: string[]
+          created_at?: string
+          direction?: string
+          emotion?: string
+          entry_price?: number
+          exit_price?: number
+          id?: string
+          market_type?: string
+          mistake_tags?: string[]
+          notes?: string
+          pnl?: number
+          quantity?: number
+          symbol?: string
+          trade_date?: string
+          trade_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      wallet_access: {
+        Row: {
+          access_date: string
+          created_at: string
+          id: string
+          tx_hash: string
+          user_id: string
+          wallet_address: string
+        }
+        Insert: {
+          access_date?: string
+          created_at?: string
+          id?: string
+          tx_hash?: string
+          user_id: string
+          wallet_address: string
+        }
+        Update: {
+          access_date?: string
+          created_at?: string
+          id?: string
+          tx_hash?: string
+          user_id?: string
+          wallet_address?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
