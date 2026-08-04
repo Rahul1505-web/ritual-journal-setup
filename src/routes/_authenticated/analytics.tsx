@@ -72,8 +72,8 @@ function Analytics() {
         <StatCard label="Trades Logged" value={String(s.count)} />
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <Card className="p-4 sm:p-5">
+      <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Card className="p-6">
           <h2 className="mb-4 text-sm font-semibold">Monthly P&L</h2>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -96,7 +96,7 @@ function Analytics() {
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-5">
+        <Card className="p-6">
           <h2 className="mb-4 text-sm font-semibold">Win / Loss Split</h2>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -121,8 +121,8 @@ function Analytics() {
         </Card>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
-        <Card className="p-4 sm:p-5">
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <Card className="p-6">
           <h2 className="mb-4 text-sm font-semibold">Most Traded Symbols</h2>
           <div className="space-y-3">
             {symbols.map((sym) => (
@@ -152,8 +152,8 @@ function Analytics() {
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-5">
-          <h2 className="text-sm font-semibold">Emotion vs P&L</h2>
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold">Emotion vs P&L</h2>
           <p className="mb-4 text-xs text-muted-foreground">
             Which states of mind actually make you money.
           </p>
@@ -182,7 +182,7 @@ function Analytics() {
         </Card>
       </div>
 
-      <Card className="mt-4 p-4 sm:p-5">
+      <Card className="mt-6 p-6">
         <h2 className="mb-4 text-sm font-semibold">Mistake Frequency</h2>
         <div className="h-[280px]">
           <ResponsiveContainer width="100%" height="100%">

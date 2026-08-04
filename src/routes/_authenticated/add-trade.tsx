@@ -120,8 +120,8 @@ function AddTrade() {
     <AppLayout title="Add Trade" subtitle="Log the setup, the numbers and the psychology">
       <form onSubmit={onSubmit} className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-4">
-          <Card className="gap-4 p-4 sm:p-5">
-            <h2 className="text-sm font-semibold">Position</h2>
+          <Card className="gap-6 p-6">
+            <h2 className="text-lg font-semibold">Position</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="symbol">Symbol / Instrument</Label>
@@ -209,8 +209,8 @@ function AddTrade() {
             </div>
           </Card>
 
-          <Card className="gap-4 p-4 sm:p-5">
-            <h2 className="text-sm font-semibold">Psychology</h2>
+          <Card className="gap-6 p-6">
+            <h2 className="text-lg font-semibold">Psychology</h2>
             <div className="space-y-2">
               <Label>Emotion at entry</Label>
               <Select value={emotion} onValueChange={(v) => setEmotion(v as Emotion)}>
@@ -256,15 +256,15 @@ function AddTrade() {
             </div>
           </Card>
 
-          <Card className="gap-4 p-4 sm:p-5">
-            <h2 className="text-sm font-semibold">Chart Screenshots</h2>
+          <Card className="gap-6 p-6">
+            <h2 className="text-lg font-semibold">Chart Screenshots</h2>
             <ChartUploader value={charts} onChange={setCharts} onView={setLightbox} />
           </Card>
           <ChartLightbox paths={charts} index={lightbox} onClose={() => setLightbox(null)} />
         </div>
 
         <div className="space-y-4">
-          <Card className="gap-3 p-4 sm:p-5">
+          <Card className="gap-3 p-6">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Calculated Result
             </p>
@@ -284,9 +284,9 @@ function AddTrade() {
             </Button>
           </Card>
 
-          <Card className="gap-3 p-4 sm:p-5">
+          <Card className="gap-3 p-6">
             <div>
-              <h2 className="text-sm font-semibold">Pre-trade checklist</h2>
+              <h2 className="text-lg font-semibold">Pre-trade checklist</h2>
               <p className="text-xs text-muted-foreground">
                 Tick every rule you followed on this trade.
               </p>

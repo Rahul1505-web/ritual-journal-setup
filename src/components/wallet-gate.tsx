@@ -9,8 +9,10 @@ import { useWalletAccess } from "@/lib/wallet-access";
 
 function Overlay({ children }: { children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 px-4 py-8 backdrop-blur">
-      <Card className="w-full max-w-md gap-5 p-6">{children}</Card>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 px-4 py-8 backdrop-blur-sm">
+      <Card className="w-full max-w-md gap-6 p-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+        {children}
+      </Card>
     </div>
   );
 }
@@ -99,9 +101,11 @@ export function WalletGate({ children }: { children: React.ReactNode }) {
           </div>
 
 
-          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <span className="size-2 rounded-full bg-profit" />
-            <span className="font-mono">{shortAddress(address)}</span>
+          <div className="flex items-center justify-center">
+            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 font-mono text-sm text-muted-foreground">
+              <span className="size-2 rounded-full bg-profit" />
+              {shortAddress(address)}
+            </span>
           </div>
 
           {wrongNetwork ? (

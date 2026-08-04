@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ArrowUpDown, Filter, X } from "lucide-react";
+import { ArrowUpDown, Filter, SearchX, X } from "lucide-react";
 
 import { AppLayout } from "@/components/app-layout";
 import { PnlCell } from "@/components/journal-ui";
@@ -104,7 +104,7 @@ function TradeLog() {
 
   return (
     <AppLayout title="Trade Log" subtitle={`${rows.length} trades · ${signedMoney(totalPnl)} net`}>
-      <Card className="gap-4 p-4 sm:p-5">
+      <Card className="gap-6 p-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Filter className="size-4 text-primary" /> Filters
@@ -141,16 +141,16 @@ function TradeLog() {
         </div>
       </Card>
 
-      <Card className="mt-4 overflow-hidden p-0">
+      <Card className="mt-6 overflow-hidden p-0">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                 {headerButton("symbol", "Symbol", "pl-4 sm:pl-5")}
-                <th className="px-4 py-2.5 font-medium">Market</th>
-                <th className="px-4 py-2.5 font-medium">Direction</th>
-                <th className="px-4 py-2.5 font-medium">Type</th>
-                <th className="px-4 py-2.5 font-medium">Emotion</th>
+                <th className="px-4 py-2.5 font-semibold">Market</th>
+                <th className="px-4 py-2.5 font-semibold">Direction</th>
+                <th className="px-4 py-2.5 font-semibold">Type</th>
+                <th className="px-4 py-2.5 font-semibold">Emotion</th>
                 {headerButton("pnl", "P&L", "text-right")}
                 {headerButton("date", "Date", "text-right pr-4 sm:pr-5")}
               </tr>
@@ -165,9 +165,9 @@ function TradeLog() {
                       params: { tradeId: t.id },
                     })
                   }
-                  className="cursor-pointer border-t border-border/70 hover:bg-surface-2/60"
+                  className="cursor-pointer border-b border-border/50 transition-colors duration-200 hover:bg-muted/40"
                 >
-                  <td className="px-4 py-3 font-semibold sm:px-5">{t.symbol}</td>
+                  <td className="px-4 py-3 font-mono font-semibold sm:px-5">{t.symbol}</td>
                   <td className="px-4 py-3 text-muted-foreground">{t.market}</td>
                   <td className="px-4 py-3">
                     <Badge
@@ -182,15 +182,23 @@ function TradeLog() {
                   <td className="px-4 py-3 text-right">
                     <PnlCell value={pnl(t)} />
                   </td>
-                  <td className="px-4 py-3 text-right text-xs text-muted-foreground sm:pr-5">
+                  <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground sm:pr-5">
                     {formatDate(t.date)}
                   </td>
                 </tr>
               ))}
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-sm text-muted-foreground">
-                    No trades match these filters.
+                  <td colSpan={7} className="px-6 py-16">
+                    <div className="flex flex-col items-center justify-center gap-3 text-center">
+                      <span className="grid size-12 place-items-center rounded-full border border-border bg-muted/40 text-muted-foreground">
+                        <SearchX className="size-5" />
+                      </span>
+                      <p className="text-base font-semibold">No trades found</p>
+                      <p className="max-w-xs text-sm text-muted-foreground">
+                        No trades match these filters. Try clearing them or log a new trade.
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : null}
