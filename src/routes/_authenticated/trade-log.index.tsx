@@ -104,7 +104,7 @@ function TradeLog() {
 
   return (
     <AppLayout title="Trade Log" subtitle={`${rows.length} trades · ${signedMoney(totalPnl)} net`}>
-      <Card className="gap-4 p-4 sm:p-5">
+      <Card className="gap-6 p-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Filter className="size-4 text-primary" /> Filters

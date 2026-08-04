@@ -48,8 +48,8 @@ function Rules() {
 
   return (
     <AppLayout title="Rules" subtitle="Your playbook and pre-trade checklist">
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card className="gap-4 p-4 sm:p-5">
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card className="gap-6 p-6">
           <div>
             <h2 className="text-sm font-semibold">Trading rules</h2>
             <p className="text-xs text-muted-foreground">Edit any rule inline, or add a new one.</p>
@@ -91,7 +91,7 @@ function Rules() {
           </div>
         </Card>
 
-        <Card className="gap-4 p-4 sm:p-5">
+        <Card className="gap-6 p-6">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <h2 className="flex items-center gap-2 text-sm font-semibold">

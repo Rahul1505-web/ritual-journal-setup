@@ -73,7 +73,7 @@ function Dashboard() {
         />
       </div>
 
-      <Card className="mt-4 p-4 sm:p-5">
+      <Card className="mt-4 p-6">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold">Equity Curve</h2>

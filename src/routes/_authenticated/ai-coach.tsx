@@ -137,7 +137,7 @@ function AiCoach() {
   return (
     <AppLayout title="AI Trade Coach" subtitle="Personalised feedback built from your journal">
       <Card className="flex h-[calc(100vh-13rem)] min-h-[480px] flex-col gap-0 overflow-hidden p-0">
-        <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+        <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-6">
           {messages.map((m, i) => (
             <div
               key={i}
