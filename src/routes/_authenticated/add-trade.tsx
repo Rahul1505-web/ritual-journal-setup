@@ -121,7 +121,7 @@ function AddTrade() {
       <form onSubmit={onSubmit} className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-4">
           <Card className="gap-6 p-6">
-            <h2 className="text-sm font-semibold">Position</h2>
+            <h2 className="text-lg font-semibold">Position</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="symbol">Symbol / Instrument</Label>
@@ -210,7 +210,7 @@ function AddTrade() {
           </Card>
 
           <Card className="gap-6 p-6">
-            <h2 className="text-sm font-semibold">Psychology</h2>
+            <h2 className="text-lg font-semibold">Psychology</h2>
             <div className="space-y-2">
               <Label>Emotion at entry</Label>
               <Select value={emotion} onValueChange={(v) => setEmotion(v as Emotion)}>
@@ -257,7 +257,7 @@ function AddTrade() {
           </Card>
 
           <Card className="gap-6 p-6">
-            <h2 className="text-sm font-semibold">Chart Screenshots</h2>
+            <h2 className="text-lg font-semibold">Chart Screenshots</h2>
             <ChartUploader value={charts} onChange={setCharts} onView={setLightbox} />
           </Card>
           <ChartLightbox paths={charts} index={lightbox} onClose={() => setLightbox(null)} />
@@ -286,7 +286,7 @@ function AddTrade() {
 
           <Card className="gap-3 p-6">
             <div>
-              <h2 className="text-sm font-semibold">Pre-trade checklist</h2>
+              <h2 className="text-lg font-semibold">Pre-trade checklist</h2>
               <p className="text-xs text-muted-foreground">
                 Tick every rule you followed on this trade.
               </p>

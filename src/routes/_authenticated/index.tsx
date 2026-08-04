@@ -76,7 +76,7 @@ function Dashboard() {
       <Card className="mt-6 p-6">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold">Equity Curve</h2>
+            <h2 className="text-lg font-semibold">Equity Curve</h2>
             <p className="text-xs text-muted-foreground">Portfolio growth over time</p>
           </div>
           <Badge variant="outline" className="shrink-0 tabular">
@@ -110,7 +110,7 @@ function Dashboard() {
 
       <Card className="mt-6 overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3.5 sm:px-5">
-          <h2 className="text-sm font-semibold">Recent Trades</h2>
+          <h2 className="text-lg font-semibold">Recent Trades</h2>
           <Link to="/trade-log" className="shrink-0 text-xs font-medium text-primary hover:underline">
             View all
           </Link>

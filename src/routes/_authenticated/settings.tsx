@@ -35,7 +35,7 @@ function Settings() {
         <div className="space-y-4">
 
           <Card className="gap-6 p-6">
-            <h2 className="text-sm font-semibold">Journaling</h2>
+            <h2 className="text-lg font-semibold">Journaling</h2>
             {[
               ["Require checklist before saving a trade", true],
               ["Daily journaling reminder", true],
@@ -50,7 +50,7 @@ function Settings() {
           </Card>
 
           <Card className="gap-2 p-6">
-            <h2 className="text-sm font-semibold">Journal snapshot</h2>
+            <h2 className="text-lg font-semibold">Journal snapshot</h2>
             <p className="text-sm text-muted-foreground">
               {s.count} trades logged · {rules.length} active rules · {s.winRate.toFixed(1)}% win rate
             </p>

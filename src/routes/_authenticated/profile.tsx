@@ -62,7 +62,7 @@ function Profile() {
     <AppLayout title="Profile" subtitle="Your account, wallet and trading defaults">
       <div className="grid gap-6 xl:grid-cols-2">
         <Card className="gap-6 p-6">
-          <h2 className="text-sm font-semibold">User info</h2>
+          <h2 className="text-lg font-semibold">User info</h2>
 
           <div className="space-y-2">
             <Label htmlFor="name">Trader name</Label>
@@ -127,7 +127,7 @@ function Profile() {
         </Card>
 
         <Card className="gap-6 p-6">
-          <h2 className="text-sm font-semibold">Actions</h2>
+          <h2 className="text-lg font-semibold">Actions</h2>
           <p className="text-sm text-muted-foreground">
             Disconnecting your wallet keeps you signed in. Signing out clears your session entirely.
           </p>

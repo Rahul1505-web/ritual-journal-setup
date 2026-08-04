@@ -51,7 +51,7 @@ function Rules() {
       <div className="grid gap-6 xl:grid-cols-2">
         <Card className="gap-6 p-6">
           <div>
-            <h2 className="text-sm font-semibold">Trading rules</h2>
+            <h2 className="text-lg font-semibold">Trading rules</h2>
             <p className="text-xs text-muted-foreground">Edit any rule inline, or add a new one.</p>
           </div>
           <form onSubmit={submit} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
@@ -94,7 +94,7 @@ function Rules() {
         <Card className="gap-6 p-6">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <h2 className="flex items-center gap-2 text-lg font-semibold">
                 <ShieldCheck className="size-4 text-primary" /> Pre-trade checklist
               </h2>
               <p className="text-xs text-muted-foreground">

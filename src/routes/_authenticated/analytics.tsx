@@ -153,7 +153,7 @@ function Analytics() {
         </Card>
 
         <Card className="p-6">
-          <h2 className="text-sm font-semibold">Emotion vs P&L</h2>
+          <h2 className="text-lg font-semibold">Emotion vs P&L</h2>
           <p className="mb-4 text-xs text-muted-foreground">
             Which states of mind actually make you money.
           </p>
