@@ -73,7 +73,7 @@ function Dashboard() {
         />
       </div>
 
-      <Card className="mt-4 p-6">
+      <Card className="mt-6 p-6">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold">Equity Curve</h2>
@@ -108,7 +108,7 @@ function Dashboard() {
         </div>
       </Card>
 
-      <Card className="mt-4 overflow-hidden">
+      <Card className="mt-6 overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3.5 sm:px-5">
           <h2 className="text-sm font-semibold">Recent Trades</h2>
           <Link to="/trade-log" className="shrink-0 text-xs font-medium text-primary hover:underline">
@@ -119,16 +119,16 @@ function Dashboard() {
           <table className="w-full min-w-[520px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-2.5 font-medium sm:px-5">Symbol</th>
-                <th className="px-4 py-2.5 font-medium">Direction</th>
+                <th className="px-4 py-2.5 font-semibold sm:px-5">Symbol</th>
+                <th className="px-4 py-2.5 font-semibold">Direction</th>
                 <th className="px-4 py-2.5 text-right font-medium">P&L</th>
                 <th className="px-4 py-2.5 text-right font-medium sm:px-5">Date</th>
               </tr>
             </thead>
             <tbody>
               {recent.map((t) => (
-                <tr key={t.id} className="border-t border-border/70 hover:bg-surface-2/60">
-                  <td className="px-4 py-3 font-semibold sm:px-5">
+                <tr key={t.id} className="border-b border-border/50 transition-colors duration-200 hover:bg-muted/40">
+                  <td className="px-4 py-3 font-mono font-semibold sm:px-5">
                     {t.symbol}
                     <span className="ml-2 text-xs font-normal text-muted-foreground">{t.market}</span>
                   </td>
@@ -147,7 +147,7 @@ function Dashboard() {
                   <td className="px-4 py-3 text-right">
                     <PnlCell value={pnl(t)} />
                   </td>
-                  <td className="px-4 py-3 text-right text-xs text-muted-foreground sm:px-5">
+                  <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground sm:px-5">
                     {formatDate(t.date)}
                   </td>
                 </tr>

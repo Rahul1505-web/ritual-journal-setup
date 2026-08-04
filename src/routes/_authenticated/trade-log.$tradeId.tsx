@@ -74,7 +74,7 @@ function TradeDetail() {
     <AppLayout title={trade.symbol} subtitle={`${trade.market} · ${formatDate(trade.date)}`}>
       {back}
 
-      <Card className="mt-4 gap-4 p-6">
+      <Card className="mt-6 gap-4 p-6">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-bold">{trade.symbol}</h2>
           <Badge
@@ -113,7 +113,7 @@ function TradeDetail() {
         </p>
       </Card>
 
-      <Card className="mt-4 gap-3 p-6">
+      <Card className="mt-6 gap-3 p-6">
         <h3 className="text-sm font-semibold">Chart Screenshots</h3>
         {isDemo ? (
           <p className="text-xs text-muted-foreground">
@@ -129,7 +129,7 @@ function TradeDetail() {
       </Card>
 
       {!isDemo ? (
-        <Card className="mt-4 gap-3 border-loss/30 p-6">
+        <Card className="mt-6 gap-3 border-loss/30 p-6">
           <h3 className="text-sm font-semibold text-loss">Danger zone</h3>
           <p className="text-xs text-muted-foreground">
             Permanently remove this trade and all of its chart screenshots.

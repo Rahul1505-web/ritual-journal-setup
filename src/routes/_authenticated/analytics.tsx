@@ -72,7 +72,7 @@ function Analytics() {
         <StatCard label="Trades Logged" value={String(s.count)} />
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Card className="p-6">
           <h2 className="mb-4 text-sm font-semibold">Monthly P&L</h2>
           <div className="h-[260px]">
@@ -121,7 +121,7 @@ function Analytics() {
         </Card>
       </div>
 
-      <div className="mt-4 grid gap-6 xl:grid-cols-2">
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <Card className="p-6">
           <h2 className="mb-4 text-sm font-semibold">Most Traded Symbols</h2>
           <div className="space-y-3">
@@ -182,7 +182,7 @@ function Analytics() {
         </Card>
       </div>
 
-      <Card className="mt-4 p-6">
+      <Card className="mt-6 p-6">
         <h2 className="mb-4 text-sm font-semibold">Mistake Frequency</h2>
         <div className="h-[280px]">
           <ResponsiveContainer width="100%" height="100%">
