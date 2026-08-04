@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ArrowUpDown, Filter, X } from "lucide-react";
+import { ArrowUpDown, Filter, SearchX, X } from "lucide-react";
 
 import { AppLayout } from "@/components/app-layout";
 import { PnlCell } from "@/components/journal-ui";
@@ -189,8 +189,16 @@ function TradeLog() {
               ))}
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-sm text-muted-foreground">
-                    No trades match these filters.
+                  <td colSpan={7} className="px-6 py-16">
+                    <div className="flex flex-col items-center justify-center gap-3 text-center">
+                      <span className="grid size-12 place-items-center rounded-full border border-border bg-muted/40 text-muted-foreground">
+                        <SearchX className="size-5" />
+                      </span>
+                      <p className="text-base font-semibold">No trades found</p>
+                      <p className="max-w-xs text-sm text-muted-foreground">
+                        No trades match these filters. Try clearing them or log a new trade.
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : null}
