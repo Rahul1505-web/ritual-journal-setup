@@ -54,24 +54,24 @@ export function AppLayout({
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
-        <div className="flex items-center gap-2 px-5 py-6">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-sidebar-border bg-sidebar shadow-md lg:flex">
+        <div className="flex items-center gap-3 border-b border-sidebar-border px-5 py-6">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
             <CandlestickChart className="size-5" />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold tracking-tight">TradeLog Pro</p>
-            <p className="truncate text-[11px] text-muted-foreground">Trading journal</p>
+            <p className="truncate text-base font-semibold tracking-tight">TradeLog Pro</p>
+            <p className="truncate text-xs text-muted-foreground">Trading journal</p>
           </div>
         </div>
-        <nav className="flex-1 space-y-1 px-3">
+        <nav className="flex-1 space-y-1.5 px-3 py-4">
           {NAV.map((item) => (
             <div key={item.to}>
               <Link
                 to={item.to}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground",
-                  isActive(item.to, item.exact) && "bg-primary/15 text-primary",
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-sidebar-accent hover:text-foreground",
+                  isActive(item.to, item.exact) && "bg-primary/15 font-semibold text-primary",
                 )}
               >
                 <item.icon className="size-4 shrink-0" />
@@ -81,12 +81,12 @@ export function AppLayout({
           ))}
         </nav>
 
-        <div className="mt-2 border-t border-sidebar-border px-3 pt-3">
+        <div className="mt-2 border-t border-sidebar-border px-3 py-4">
           <Link
             to={SETTINGS_ITEM.to}
             className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground",
-              isActive(SETTINGS_ITEM.to, SETTINGS_ITEM.exact) && "bg-primary/15 text-primary",
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-sidebar-accent hover:text-foreground",
+              isActive(SETTINGS_ITEM.to, SETTINGS_ITEM.exact) && "bg-primary/15 font-semibold text-primary",
             )}
           >
             <SETTINGS_ITEM.icon className="size-4 shrink-0" />
@@ -96,32 +96,36 @@ export function AppLayout({
 
       </aside>
 
-      <div className="lg:pl-60">
-        <header className="sticky top-0 z-20 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border bg-background/80 px-4 py-4 backdrop-blur sm:px-6">
+      <div className="lg:pl-64">
+        <header className="sticky top-0 z-20 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-border bg-background/80 px-5 py-5 backdrop-blur-sm sm:px-8">
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-bold tracking-tight sm:text-xl">{title}</h1>
+            <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
             {subtitle ? (
-              <p className="truncate text-xs text-muted-foreground sm:text-sm">{subtitle}</p>
+              <p className="mt-1 truncate text-xs font-medium text-muted-foreground sm:text-sm">
+                {subtitle}
+              </p>
             ) : null}
           </div>
-          {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+          {actions ? <div className="flex shrink-0 items-center gap-3">{actions}</div> : null}
         </header>
         {isDemo ? (
-          <div className="mx-4 mt-4 rounded-xl border border-warning/30 bg-warning/10 px-4 py-2.5 text-xs text-muted-foreground sm:mx-6">
+          <div className="mx-5 mt-6 rounded-xl border border-warning/30 bg-warning/10 px-5 py-3 text-xs font-medium text-muted-foreground sm:mx-8">
             Showing sample data — log your first trade and this journal switches to your real trades.
           </div>
         ) : null}
-        <main className="px-4 pb-28 pt-5 sm:px-6 lg:pb-10">{children}</main>
+        <main className="animate-in fade-in duration-300 px-5 pb-28 pt-6 sm:px-8 lg:pb-12">
+          {children}
+        </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-sidebar/95 backdrop-blur lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-sidebar/95 backdrop-blur-sm lg:hidden">
         {MOBILE_NAV.map((item) => (
           <Link
             key={item.to}
             to={item.to}
             className={cn(
-              "flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium text-muted-foreground",
-              isActive(item.to, item.exact) && "text-primary",
+              "flex flex-col items-center gap-1 py-3 text-[10px] font-medium text-muted-foreground transition-all duration-200",
+              isActive(item.to, item.exact) && "font-semibold text-primary",
             )}
           >
             <item.icon className="size-5" />

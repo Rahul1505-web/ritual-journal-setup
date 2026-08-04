@@ -34,9 +34,9 @@ export function StatCard({
   icon?: LucideIcon;
 }) {
   return (
-    <Card className="gap-0 p-4">
+    <Card className="gap-0 p-6 transition-all duration-200 hover:shadow-md">
       <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {label}
         </p>
         {Icon ? (
@@ -52,14 +52,16 @@ export function StatCard({
       </div>
       <p
         className={cn(
-          "tabular mt-2 truncate text-xl font-bold sm:text-2xl",
+          "tabular mt-3 truncate text-2xl font-semibold sm:text-3xl",
           tone === "profit" && "text-profit",
           tone === "loss" && "text-loss",
         )}
       >
         {value}
       </p>
-      {hint ? <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p> : null}
+      {hint ? (
+        <p className="mt-1.5 truncate text-xs font-medium text-muted-foreground">{hint}</p>
+      ) : null}
     </Card>
   );
 }
