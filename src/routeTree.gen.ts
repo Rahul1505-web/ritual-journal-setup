@@ -9,61 +9,271 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedAddTradeRouteImport } from './routes/_authenticated/add-trade'
+import { Route as AuthenticatedAiCoachRouteImport } from './routes/_authenticated/ai-coach'
+import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
+import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
+import { Route as AuthenticatedRulesRouteImport } from './routes/_authenticated/rules'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedTradeLogIndexRouteImport } from './routes/_authenticated/trade-log.index'
+import { Route as AuthenticatedTradeLogTradeIdRouteImport } from './routes/_authenticated/trade-log.$tradeId'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAddTradeRoute = AuthenticatedAddTradeRouteImport.update({
+  id: '/add-trade',
+  path: '/add-trade',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAiCoachRoute = AuthenticatedAiCoachRouteImport.update({
+  id: '/ai-coach',
+  path: '/ai-coach',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedRulesRoute = AuthenticatedRulesRouteImport.update({
+  id: '/rules',
+  path: '/rules',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedTradeLogIndexRoute =
+  AuthenticatedTradeLogIndexRouteImport.update({
+    id: '/trade-log/',
+    path: '/trade-log/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedTradeLogTradeIdRoute =
+  AuthenticatedTradeLogTradeIdRouteImport.update({
+    id: '/trade-log/$tradeId',
+    path: '/trade-log/$tradeId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AuthenticatedIndexRoute
+  '/auth': typeof AuthRoute
+  '/add-trade': typeof AuthenticatedAddTradeRoute
+  '/ai-coach': typeof AuthenticatedAiCoachRoute
+  '/analytics': typeof AuthenticatedAnalyticsRoute
+  '/profile': typeof AuthenticatedProfileRoute
+  '/rules': typeof AuthenticatedRulesRoute
+  '/settings': typeof AuthenticatedSettingsRoute
+  '/trade-log/$tradeId': typeof AuthenticatedTradeLogTradeIdRoute
+  '/trade-log/': typeof AuthenticatedTradeLogIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/add-trade': typeof AuthenticatedAddTradeRoute
+  '/ai-coach': typeof AuthenticatedAiCoachRoute
+  '/analytics': typeof AuthenticatedAnalyticsRoute
+  '/profile': typeof AuthenticatedProfileRoute
+  '/rules': typeof AuthenticatedRulesRoute
+  '/settings': typeof AuthenticatedSettingsRoute
+  '/': typeof AuthenticatedIndexRoute
+  '/trade-log/$tradeId': typeof AuthenticatedTradeLogTradeIdRoute
+  '/trade-log': typeof AuthenticatedTradeLogIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/_authenticated/add-trade': typeof AuthenticatedAddTradeRoute
+  '/_authenticated/ai-coach': typeof AuthenticatedAiCoachRoute
+  '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
+  '/_authenticated/profile': typeof AuthenticatedProfileRoute
+  '/_authenticated/rules': typeof AuthenticatedRulesRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/trade-log/$tradeId': typeof AuthenticatedTradeLogTradeIdRoute
+  '/_authenticated/trade-log/': typeof AuthenticatedTradeLogIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/add-trade'
+    | '/ai-coach'
+    | '/analytics'
+    | '/profile'
+    | '/rules'
+    | '/settings'
+    | '/trade-log/$tradeId'
+    | '/trade-log/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/auth'
+    | '/add-trade'
+    | '/ai-coach'
+    | '/analytics'
+    | '/profile'
+    | '/rules'
+    | '/settings'
+    | '/'
+    | '/trade-log/$tradeId'
+    | '/trade-log'
+  id:
+    | '__root__'
+    | '/_authenticated'
+    | '/auth'
+    | '/_authenticated/add-trade'
+    | '/_authenticated/ai-coach'
+    | '/_authenticated/analytics'
+    | '/_authenticated/profile'
+    | '/_authenticated/rules'
+    | '/_authenticated/settings'
+    | '/_authenticated/'
+    | '/_authenticated/trade-log/$tradeId'
+    | '/_authenticated/trade-log/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/': {
+      id: '/_authenticated/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/add-trade': {
+      id: '/_authenticated/add-trade'
+      path: '/add-trade'
+      fullPath: '/add-trade'
+      preLoaderRoute: typeof AuthenticatedAddTradeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/ai-coach': {
+      id: '/_authenticated/ai-coach'
+      path: '/ai-coach'
+      fullPath: '/ai-coach'
+      preLoaderRoute: typeof AuthenticatedAiCoachRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/analytics': {
+      id: '/_authenticated/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AuthenticatedAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/profile': {
+      id: '/_authenticated/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof AuthenticatedProfileRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/rules': {
+      id: '/_authenticated/rules'
+      path: '/rules'
+      fullPath: '/rules'
+      preLoaderRoute: typeof AuthenticatedRulesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/trade-log/': {
+      id: '/_authenticated/trade-log/'
+      path: '/trade-log'
+      fullPath: '/trade-log/'
+      preLoaderRoute: typeof AuthenticatedTradeLogIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/trade-log/$tradeId': {
+      id: '/_authenticated/trade-log/$tradeId'
+      path: '/trade-log/$tradeId'
+      fullPath: '/trade-log/$tradeId'
+      preLoaderRoute: typeof AuthenticatedTradeLogTradeIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
   }
 }
 
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAddTradeRoute: typeof AuthenticatedAddTradeRoute
+  AuthenticatedAiCoachRoute: typeof AuthenticatedAiCoachRoute
+  AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
+  AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
+  AuthenticatedRulesRoute: typeof AuthenticatedRulesRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedTradeLogTradeIdRoute: typeof AuthenticatedTradeLogTradeIdRoute
+  AuthenticatedTradeLogIndexRoute: typeof AuthenticatedTradeLogIndexRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAddTradeRoute: AuthenticatedAddTradeRoute,
+  AuthenticatedAiCoachRoute: AuthenticatedAiCoachRoute,
+  AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
+  AuthenticatedProfileRoute: AuthenticatedProfileRoute,
+  AuthenticatedRulesRoute: AuthenticatedRulesRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedTradeLogTradeIdRoute: AuthenticatedTradeLogTradeIdRoute,
+  AuthenticatedTradeLogIndexRoute: AuthenticatedTradeLogIndexRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

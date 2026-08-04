@@ -1,0 +1,1 @@
+ALTER TABLE public.trades ADD COLUMN IF NOT EXISTS chart_urls text[] NOT NULL DEFAULT '{}'::text[];

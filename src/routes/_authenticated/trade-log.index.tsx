@@ -1,0 +1,234 @@
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import { ArrowUpDown, Filter, X } from "lucide-react";
+
+import { AppLayout } from "@/components/app-layout";
+import { PnlCell } from "@/components/journal-ui";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useJournal } from "@/lib/journal-store";
+import { MARKETS, TRADE_TYPES, formatDate, pnl, signedMoney } from "@/lib/trades";
+import { cn } from "@/lib/utils";
+
+export const Route = createFileRoute("/_authenticated/trade-log/")({
+  head: () => ({
+    meta: [
+      { title: "Trade Log — TradeLog Pro" },
+      {
+        name: "description",
+        content: "Browse, filter and sort your complete trade history by market, direction and result.",
+      },
+      { property: "og:title", content: "Trade Log — TradeLog Pro" },
+      {
+        property: "og:description",
+        content: "Browse, filter and sort your complete trade history.",
+      },
+    ],
+  }),
+  component: TradeLog,
+});
+
+type SortKey = "date" | "pnl" | "symbol";
+
+function TradeLog() {
+  const { trades } = useJournal();
+  const navigate = useNavigate();
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [market, setMarket] = useState("all");
+  const [direction, setDirection] = useState("all");
+  const [tradeType, setTradeType] = useState("all");
+  const [outcome, setOutcome] = useState("all");
+  const [sort, setSort] = useState<SortKey>("date");
+  const [asc, setAsc] = useState(false);
+
+  const rows = useMemo(() => {
+    const filtered = trades.filter((t) => {
+      const d = new Date(t.date);
+      if (from && d < new Date(from)) return false;
+      if (to && d > new Date(`${to}T23:59:59`)) return false;
+      if (market !== "all" && t.market !== market) return false;
+      if (direction !== "all" && t.direction !== direction) return false;
+      if (tradeType !== "all" && t.tradeType !== tradeType) return false;
+      if (outcome === "win" && pnl(t) <= 0) return false;
+      if (outcome === "loss" && pnl(t) > 0) return false;
+      return true;
+    });
+    const dir = asc ? 1 : -1;
+    return filtered.sort((a, b) => {
+      if (sort === "pnl") return (pnl(a) - pnl(b)) * dir;
+      if (sort === "symbol") return a.symbol.localeCompare(b.symbol) * dir;
+      return (+new Date(a.date) - +new Date(b.date)) * dir;
+    });
+  }, [trades, from, to, market, direction, tradeType, outcome, sort, asc]);
+
+  const totalPnl = rows.reduce((acc, t) => acc + pnl(t), 0);
+
+  const reset = () => {
+    setFrom("");
+    setTo("");
+    setMarket("all");
+    setDirection("all");
+    setTradeType("all");
+    setOutcome("all");
+  };
+
+  const headerButton = (key: SortKey, label: string, className?: string) => (
+    <th className={cn("px-4 py-2.5 font-medium", className)}>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 hover:text-foreground"
+        onClick={() => {
+          if (sort === key) setAsc((v) => !v);
+          else {
+            setSort(key);
+            setAsc(false);
+          }
+        }}
+      >
+        {label}
+        <ArrowUpDown className="size-3" />
+      </button>
+    </th>
+  );
+
+  return (
+    <AppLayout title="Trade Log" subtitle={`${rows.length} trades · ${signedMoney(totalPnl)} net`}>
+      <Card className="gap-4 p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Filter className="size-4 text-primary" /> Filters
+          </div>
+          <Button variant="ghost" size="sm" onClick={reset}>
+            <X className="size-4" /> Reset
+          </Button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="space-y-1.5">
+            <Label className="text-xs">From</Label>
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">To</Label>
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          <FilterSelect label="Market" value={market} onChange={setMarket} options={MARKETS} />
+          <FilterSelect label="Direction" value={direction} onChange={setDirection} options={["BUY", "SELL"]} />
+          <FilterSelect label="Trade Type" value={tradeType} onChange={setTradeType} options={TRADE_TYPES} />
+          <div className="space-y-1.5">
+            <Label className="text-xs">Result</Label>
+            <Select value={outcome} onValueChange={setOutcome}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="win">Wins</SelectItem>
+                <SelectItem value="loss">Losses</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="mt-4 overflow-hidden p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                {headerButton("symbol", "Symbol", "pl-4 sm:pl-5")}
+                <th className="px-4 py-2.5 font-medium">Market</th>
+                <th className="px-4 py-2.5 font-medium">Direction</th>
+                <th className="px-4 py-2.5 font-medium">Type</th>
+                <th className="px-4 py-2.5 font-medium">Emotion</th>
+                {headerButton("pnl", "P&L", "text-right")}
+                {headerButton("date", "Date", "text-right pr-4 sm:pr-5")}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((t) => (
+                <tr
+                  key={t.id}
+                  onClick={() =>
+                    void navigate({
+                      to: "/trade-log/$tradeId",
+                      params: { tradeId: t.id },
+                    })
+                  }
+                  className="cursor-pointer border-t border-border/70 hover:bg-surface-2/60"
+                >
+                  <td className="px-4 py-3 font-semibold sm:px-5">{t.symbol}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{t.market}</td>
+                  <td className="px-4 py-3">
+                    <Badge
+                      variant="outline"
+                      className={t.direction === "BUY" ? "border-profit/40 text-profit" : "border-loss/40 text-loss"}
+                    >
+                      {t.direction}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{t.tradeType}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{t.emotion}</td>
+                  <td className="px-4 py-3 text-right">
+                    <PnlCell value={pnl(t)} />
+                  </td>
+                  <td className="px-4 py-3 text-right text-xs text-muted-foreground sm:pr-5">
+                    {formatDate(t.date)}
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-5 py-10 text-center text-sm text-muted-foreground">
+                    No trades match these filters.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </AppLayout>
+  );
+}
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">{label}</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All</SelectItem>
+          {options.map((o) => (
+            <SelectItem key={o} value={o}>
+              {o}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
