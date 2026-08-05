@@ -16,7 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { useWalletAccess } from "@/lib/wallet-access";
+import { OWNER_ADDRESS, shortAddress } from "@/lib/wagmi";
+import { startOfUtcDay, useWalletAccess } from "@/lib/wallet-access";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   head: () => ({
