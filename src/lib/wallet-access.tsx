@@ -4,30 +4,28 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { parseEther } from "viem";
 import { useAccount, useChainId, useConnect, useDisconnect } from "wagmi";
 import {
-  readContract,
+  sendTransaction,
   switchChain,
   waitForTransactionReceipt,
-  writeContract,
 } from "wagmi/actions";
 
 import { supabase } from "@/integrations/supabase/client";
-import {
-  ACCESS_CONTRACT_ABI,
-  ACCESS_CONTRACT_ADDRESS,
-  ACCESS_PRICE,
-  ritualChain,
-  wagmiConfig,
-} from "@/lib/wagmi";
+import { OWNER_ADDRESS, ritualChain, wagmiConfig } from "@/lib/wagmi";
 
 export function utcDateString(d: Date = new Date()) {
   return d.toISOString().slice(0, 10);
+}
+
+/** Start of the current UTC day. */
+export function startOfUtcDay(now: Date = new Date()) {
+  const d = new Date(now);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
 }
 
 /** Milliseconds until the next 00:00 UTC reset. */
@@ -42,11 +40,6 @@ export function msUntilUtcMidnight(now: Date = new Date()) {
     0,
   );
   return Math.max(0, next - now.getTime());
-}
-
-/** UTC day index used by the access contract (Unix timestamp divided by one day). */
-export function utcDayIndex(nowMs: number = Date.now()) {
-  return Math.floor(nowMs / 86_400_000);
 }
 
 export function formatCountdown(ms: number) {
@@ -78,9 +71,9 @@ interface WalletAccessValue {
   disconnectWallet: () => void;
   hasAccessToday: boolean;
   checking: boolean;
-  paying: boolean;
+  unlocking: boolean;
   streak: number;
-  payForToday: () => Promise<void>;
+  unlockAccess: () => Promise<void>;
   wrongNetwork: boolean;
   switching: boolean;
   switchToRitual: () => Promise<void>;
@@ -97,23 +90,12 @@ export function WalletAccessProvider({ children }: { children: ReactNode }) {
 
   const [hasAccessToday, setHasAccessToday] = useState(false);
   const [checking, setChecking] = useState(true);
-  const [paying, setPaying] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [streak, setStreak] = useState(0);
   const [resetMs, setResetMs] = useState<number | null>(null);
 
   const wrongNetwork = isConnected && chainId !== ritualChain.id;
-
-  const refreshStreak = useCallback(async (wallet: string) => {
-    const { data } = await supabase
-      .from("wallet_access")
-      .select("access_date")
-      .eq("wallet_address", wallet)
-      .order("access_date", { ascending: false })
-      .limit(60);
-    const dates = (data ?? []).map((r) => r.access_date as string);
-    setStreak(streakFromDates(dates));
-  }, []);
 
   const refresh = useCallback(async () => {
     if (!address) {
@@ -123,69 +105,45 @@ export function WalletAccessProvider({ children }: { children: ReactNode }) {
       return;
     }
     setChecking(true);
-    try {
-      const lastAccessDay = (await readContract(wagmiConfig, {
-        address: ACCESS_CONTRACT_ADDRESS,
-        abi: ACCESS_CONTRACT_ABI,
-        functionName: "lastAccessDay",
-        args: [address],
-        chainId: ritualChain.id,
-      })) as bigint;
+    const wallet = address.toLowerCase();
 
-      // Access is derived from contract storage on every load/connect. React state
-      // only mirrors that result for rendering and is never the source of truth.
-      setHasAccessToday(lastAccessDay >= BigInt(utcDayIndex()));
-    } catch {
-      setHasAccessToday(false);
-    }
-    void refreshStreak(address.toLowerCase());
+    const { data: today } = await supabase
+      .from("daily_access")
+      .select("id")
+      .eq("wallet_address", wallet)
+      .gte("paid_at", startOfUtcDay().toISOString())
+      .limit(1);
+    setHasAccessToday((today ?? []).length > 0);
+
+    const { data: history } = await supabase
+      .from("daily_access")
+      .select("paid_at")
+      .eq("wallet_address", wallet)
+      .order("paid_at", { ascending: false })
+      .limit(120);
+    setStreak(
+      streakFromDates(
+        (history ?? []).map((r) => utcDateString(new Date(r.paid_at as string))),
+      ),
+    );
+
     setChecking(false);
-  }, [address, refreshStreak]);
+  }, [address]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  // Contract-driven countdown to the next access reset.
-  const fetchingReset = useRef(false);
-  const loadReset = useCallback(async () => {
-    if (fetchingReset.current) return;
-    fetchingReset.current = true;
-    try {
-      const seconds = (await readContract(wagmiConfig, {
-        address: ACCESS_CONTRACT_ADDRESS,
-        abi: ACCESS_CONTRACT_ABI,
-        functionName: "getTimeUntilReset",
-        chainId: ritualChain.id,
-      })) as bigint;
-      setResetMs(Number(seconds) * 1000);
-    } catch {
-      setResetMs(msUntilUtcMidnight());
-    } finally {
-      fetchingReset.current = false;
-    }
-  }, []);
-
+  // Countdown to the next 00:00 UTC reset.
   useEffect(() => {
-    void loadReset();
+    setResetMs(msUntilUtcMidnight());
     const tick = setInterval(() => {
-      setResetMs((prev) => {
-        if (prev === null) return prev;
-        const next = prev - 1000;
-        if (next <= 0) {
-          void loadReset();
-          void refresh();
-          return 0;
-        }
-        return next;
-      });
+      const next = msUntilUtcMidnight();
+      setResetMs(next);
+      if (next >= 86_399_000) void refresh();
     }, 1000);
-    const resync = setInterval(() => void loadReset(), 5 * 60 * 1000);
-    return () => {
-      clearInterval(tick);
-      clearInterval(resync);
-    };
-  }, [loadReset, refresh]);
+    return () => clearInterval(tick);
+  }, [refresh]);
 
   const connectWallet = useCallback(
     async (connectorId?: string) => {
@@ -213,19 +171,18 @@ export function WalletAccessProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const payForToday = useCallback(async () => {
+  const unlockAccess = useCallback(async () => {
     if (!address) throw new Error("Connect a wallet first.");
-    setPaying(true);
+    setUnlocking(true);
     try {
       if (chainId !== ritualChain.id) {
         await switchChain(wagmiConfig, { chainId: ritualChain.id });
       }
 
-      const txHash = await writeContract(wagmiConfig, {
-        address: ACCESS_CONTRACT_ADDRESS,
-        abi: ACCESS_CONTRACT_ABI,
-        functionName: "payForAccess",
-        value: parseEther(ACCESS_PRICE),
+      // Zero-value confirmation transaction: the user only pays gas.
+      const txHash = await sendTransaction(wagmiConfig, {
+        to: OWNER_ADDRESS,
+        value: 0n,
         chainId: ritualChain.id,
       });
 
@@ -238,21 +195,20 @@ export function WalletAccessProvider({ children }: { children: ReactNode }) {
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
       if (user) {
-        const { error } = await supabase.from("wallet_access").insert({
+        const { error } = await supabase.from("daily_access").insert({
           user_id: user.id,
           wallet_address: address.toLowerCase(),
-          access_date: utcDateString(),
+          paid_at: new Date().toISOString(),
           tx_hash: txHash,
         });
-        if (error && error.code !== "23505") console.error(error);
+        if (error) console.error(error);
       }
 
       await refresh();
-      void loadReset();
     } finally {
-      setPaying(false);
+      setUnlocking(false);
     }
-  }, [address, chainId, refresh, loadReset]);
+  }, [address, chainId, refresh]);
 
   const countdown = resetMs === null ? "--:--:--" : formatCountdown(resetMs);
 
@@ -266,9 +222,9 @@ export function WalletAccessProvider({ children }: { children: ReactNode }) {
       disconnectWallet,
       hasAccessToday,
       checking,
-      paying,
+      unlocking,
       streak,
-      payForToday,
+      unlockAccess,
       wrongNetwork,
       switching,
       switchToRitual,
@@ -283,9 +239,9 @@ export function WalletAccessProvider({ children }: { children: ReactNode }) {
       disconnectWallet,
       hasAccessToday,
       checking,
-      paying,
+      unlocking,
       streak,
-      payForToday,
+      unlockAccess,
       wrongNetwork,
       switching,
       switchToRitual,
@@ -304,7 +260,7 @@ export function useWalletAccess() {
   return ctx;
 }
 
-/** Live countdown string to the next access reset (contract-driven). */
+/** Live countdown string to the next 00:00 UTC access reset. */
 export function useUtcCountdown() {
   return useWalletAccess().countdown;
 }

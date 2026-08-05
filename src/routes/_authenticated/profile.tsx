@@ -16,7 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { useWalletAccess } from "@/lib/wallet-access";
+import { OWNER_ADDRESS, shortAddress } from "@/lib/wagmi";
+import { startOfUtcDay, useWalletAccess } from "@/lib/wallet-access";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   head: () => ({
@@ -152,7 +153,97 @@ function Profile() {
             </Button>
           </div>
         </Card>
+
+        <OwnerPanel />
       </div>
     </AppLayout>
+  );
+}
+
+function OwnerPanel() {
+  const { address } = useWalletAccess();
+  const isOwner = address?.toLowerCase() === OWNER_ADDRESS.toLowerCase();
+  const [today, setToday] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [recent, setRecent] = useState<
+    { id: string; wallet_address: string; paid_at: string; tx_hash: string }[]
+  >([]);
+
+  useEffect(() => {
+    if (!isOwner) return;
+    void (async () => {
+      const start = startOfUtcDay().toISOString();
+      const [{ count: todayCount }, { count: totalCount }, { data }] = await Promise.all([
+        supabase
+          .from("daily_access")
+          .select("id", { count: "exact", head: true })
+          .gte("paid_at", start),
+        supabase.from("daily_access").select("id", { count: "exact", head: true }),
+        supabase
+          .from("daily_access")
+          .select("id, wallet_address, paid_at, tx_hash")
+          .order("paid_at", { ascending: false })
+          .limit(10),
+      ]);
+      setToday(todayCount ?? 0);
+      setTotal(totalCount ?? 0);
+      setRecent(data ?? []);
+    })();
+  }, [isOwner]);
+
+  if (!isOwner) return null;
+
+  return (
+    <Card className="gap-6 p-6 xl:col-span-2">
+      <div>
+        <h2 className="text-lg font-semibold">Owner</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Daily access activity across all users.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-lg border border-border bg-surface-2 p-4">
+          <p className="text-xs text-muted-foreground">Users today</p>
+          <p className="mt-1 font-mono text-2xl font-semibold">{today}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface-2 p-4">
+          <p className="text-xs text-muted-foreground">Total access payments</p>
+          <p className="mt-1 font-mono text-2xl font-semibold">{total}</p>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs text-muted-foreground">
+            <tr className="border-b border-border">
+              <th className="px-4 py-3 font-medium">Wallet</th>
+              <th className="px-4 py-3 font-medium">Time (UTC)</th>
+              <th className="px-4 py-3 font-medium">Tx hash</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {recent.map((r) => (
+              <tr key={r.id}>
+                <td className="px-4 py-3 font-mono text-xs">{shortAddress(r.wallet_address)}</td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">
+                  {new Date(r.paid_at).toISOString().slice(0, 16).replace("T", " ")}
+                </td>
+                <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                  {r.tx_hash ? shortAddress(r.tx_hash) : "—"}
+                </td>
+              </tr>
+            ))}
+            {recent.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="px-4 py-8 text-center text-xs text-muted-foreground">
+                  No access payments recorded yet.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }

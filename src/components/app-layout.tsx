@@ -6,6 +6,7 @@ import {
   ListChecks,
   PlusCircle,
   Settings,
+  Wallet,
   TableProperties,
   CandlestickChart,
   User,
@@ -13,6 +14,8 @@ import {
 import type { ReactNode } from "react";
 
 import { useJournal } from "@/lib/journal-store";
+import { shortAddress } from "@/lib/wagmi";
+import { useWalletAccess } from "@/lib/wallet-access";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -106,7 +109,10 @@ export function AppLayout({
               </p>
             ) : null}
           </div>
-          {actions ? <div className="flex shrink-0 items-center gap-3">{actions}</div> : null}
+          <div className="flex shrink-0 items-center gap-3">
+            <WalletStatus />
+            {actions}
+          </div>
         </header>
         {isDemo ? (
           <div className="mx-5 mt-6 rounded-xl border border-warning/30 bg-warning/10 px-5 py-3 text-xs font-medium text-muted-foreground sm:mx-8">
@@ -134,5 +140,44 @@ export function AppLayout({
         ))}
       </nav>
     </div>
+  );
+}
+
+function WalletStatus() {
+  const { isConnected, address, connectors, connecting, connectWallet, wrongNetwork, switchToRitual, switching } =
+    useWalletAccess();
+
+  if (!isConnected) {
+    return (
+      <button
+        type="button"
+        disabled={connecting || connectors.length === 0}
+        onClick={() => void connectWallet().catch(() => undefined)}
+        className="flex h-9 items-center gap-2 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+      >
+        <Wallet className="size-3.5" />
+        Connect Wallet
+      </button>
+    );
+  }
+
+  if (wrongNetwork) {
+    return (
+      <button
+        type="button"
+        disabled={switching}
+        onClick={() => void switchToRitual().catch(() => undefined)}
+        className="flex h-9 items-center gap-2 rounded-md border border-loss/50 px-3 text-xs font-medium text-loss transition-colors hover:bg-loss/10 disabled:opacity-50"
+      >
+        Wrong network — Switch
+      </button>
+    );
+  }
+
+  return (
+    <span className="flex h-9 items-center gap-2 rounded-md border border-border px-3 font-mono text-xs text-muted-foreground">
+      <span className="size-2 rounded-full" style={{ backgroundColor: "#10b981" }} />
+      {shortAddress(address)}
+    </span>
   );
 }
