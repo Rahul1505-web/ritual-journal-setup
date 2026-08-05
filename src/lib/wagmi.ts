@@ -4,21 +4,27 @@ import { injected, walletConnect } from "wagmi/connectors";
 
 const projectId = import.meta.env["VITE_WALLETCONNECT_PROJECT_ID"] as string | undefined;
 
+const RPC_URL =
+  (import.meta.env["VITE_RITUAL_RPC"] as string | undefined) ??
+  "https://rpc.ritualfoundation.org";
+const CHAIN_ID = Number(import.meta.env["VITE_CHAIN_ID"] ?? 1979);
+
 export const ritualChain = defineChain({
-  id: 1979,
+  id: CHAIN_ID,
   name: "Ritual Chain",
   nativeCurrency: { name: "Ritual", symbol: "RITUAL", decimals: 18 },
   rpcUrls: {
-    default: { http: ["https://rpc.ritualfoundation.org"] },
+    default: { http: [RPC_URL] },
   },
 });
 
 /** Wallet that receives the zero-value daily access confirmation transaction. */
-export const OWNER_ADDRESS =
-  "0x085Ef764668675899fAac88920071DB37103AF1e" as const;
+export const OWNER_ADDRESS = ((import.meta.env["VITE_OWNER_WALLET"] as string | undefined) ||
+  "0x085Ef764668675899fAac88920071DB37103AF1e") as `0x${string}`;
 
 export const ACCESS_CONTRACT_ADDRESS =
   "0x78E4f1cB2fDAb262980372f325984A8970fE3492" as const;
+
 
 export const ACCESS_CONTRACT_ABI = [
   {
@@ -73,7 +79,7 @@ export const wagmiConfig = createConfig({
         ]
       : []),
   ],
-  transports: { [ritualChain.id]: http("https://rpc.ritualfoundation.org") },
+  transports: { [ritualChain.id]: http(RPC_URL) },
 });
 
 export function shortAddress(address?: string | null) {
