@@ -3,16 +3,44 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { ACCESS_PRICE, shortAddress } from "@/lib/wagmi";
+import { shortAddress } from "@/lib/wagmi";
 import { useWalletAccess } from "@/lib/wallet-access";
+
+const COLORS = {
+  card: "#111827",
+  border: "#1f2937",
+  primary: "#6366f1",
+  success: "#10b981",
+  text: "#f9fafb",
+  muted: "#6b7280",
+};
 
 function Overlay({ children }: { children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 px-4 py-8 backdrop-blur-sm">
-      <Card className="w-full max-w-md gap-6 p-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 backdrop-blur-sm bg-[rgba(10,13,26,0.88)]">
+      <div
+        className="w-full max-w-[440px] animate-in fade-in slide-in-from-bottom-2 duration-200"
+        style={{
+          backgroundColor: COLORS.card,
+          border: `1px solid ${COLORS.border}`,
+          borderRadius: "8px",
+          padding: "32px",
+        }}
+      >
         {children}
-      </Card>
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      className="flex items-center justify-between"
+      style={{ fontSize: "13px", padding: "8px 0" }}
+    >
+      <span style={{ color: COLORS.muted }}>{label}</span>
+      <span style={{ color: COLORS.text }}>{value}</span>
     </div>
   );
 }
@@ -26,14 +54,13 @@ export function WalletGate({ children }: { children: React.ReactNode }) {
     connectWallet,
     hasAccessToday,
     checking,
-    paying,
-    payForToday,
+    unlocking,
+    unlockAccess,
     wrongNetwork,
     switching,
     switchToRitual,
   } = useWalletAccess();
   const [busyId, setBusyId] = useState<string | null>(null);
-
 
   const onConnect = async (id: string) => {
     setBusyId(id);
@@ -51,32 +78,41 @@ export function WalletGate({ children }: { children: React.ReactNode }) {
       <>
         {children}
         <Overlay>
-          <div className="flex items-center gap-3">
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
-              <Wallet className="size-5" />
-            </span>
-            <div>
-              <h2 className="text-lg font-bold tracking-tight">Connect your wallet</h2>
-              <p className="text-xs text-muted-foreground">
-                Connect your wallet to access TradeLog Pro.
-              </p>
-            </div>
-          </div>
+          <h2
+            className="font-semibold tracking-tight"
+            style={{ color: COLORS.text, fontSize: "20px", marginBottom: "8px" }}
+          >
+            Connect Wallet
+          </h2>
+          <p style={{ color: COLORS.muted, fontSize: "13px", lineHeight: 1.5, marginBottom: "24px" }}>
+            Connect MetaMask on Ritual Chain to continue to TradeLog Pro.
+          </p>
+
           <div className="space-y-2">
             {connectors.map((c) => (
               <Button
                 key={c.uid}
-                className="w-full"
-                variant={c.id === connectors[0]?.id ? "default" : "outline"}
+                className="w-full justify-center gap-2 font-medium"
+                style={{
+                  height: "52px",
+                  borderRadius: "8px",
+                  backgroundColor: c.uid === connectors[0]?.uid ? COLORS.primary : "transparent",
+                  border: c.uid === connectors[0]?.uid ? "none" : `1px solid ${COLORS.border}`,
+                  color: COLORS.text,
+                }}
                 disabled={connecting}
                 onClick={() => void onConnect(c.id)}
               >
-                {busyId === c.id ? <Loader2 className="size-4 animate-spin" /> : <Wallet className="size-4" />}
+                {busyId === c.id ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Wallet className="size-4" />
+                )}
                 Connect {c.name}
               </Button>
             ))}
             {connectors.length === 0 ? (
-              <p className="text-center text-xs text-muted-foreground">
+              <p className="text-center" style={{ color: COLORS.muted, fontSize: "12px" }}>
                 No wallet detected. Install MetaMask to continue.
               </p>
             ) : null}
@@ -91,34 +127,57 @@ export function WalletGate({ children }: { children: React.ReactNode }) {
       <>
         {children}
         <Overlay>
-          <div className="text-center">
-            <div className="text-4xl">🔥</div>
-            <h2 className="mt-2 text-xl font-bold tracking-tight">Unlock Today's Access</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Pay {ACCESS_PRICE} RITUAL on Ritual Chain to unlock 24-hour access to TradeLog
-              Pro. Access resets daily.
-            </p>
-          </div>
+          <h2
+            className="font-semibold tracking-tight"
+            style={{ color: COLORS.text, fontSize: "20px", marginBottom: "8px" }}
+          >
+            Daily Access Required
+          </h2>
+          <p style={{ color: COLORS.muted, fontSize: "13px", lineHeight: 1.5, marginBottom: "24px" }}>
+            Confirm a transaction to access TradeLog Pro for today. Access resets at 00:00 UTC.
+          </p>
 
-
-          <div className="flex items-center justify-center">
-            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 font-mono text-sm text-muted-foreground">
-              <span className="size-2 rounded-full bg-profit" />
-              {shortAddress(address)}
-            </span>
+          <div
+            style={{
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: "8px",
+              padding: "8px 16px",
+              marginBottom: "24px",
+            }}
+          >
+            <div
+              className="flex items-center justify-between"
+              style={{ fontSize: "13px", padding: "8px 0" }}
+            >
+              <span style={{ color: COLORS.muted }}>Wallet</span>
+              <span className="flex items-center gap-2 font-mono" style={{ color: COLORS.text }}>
+                <span
+                  className="size-2"
+                  style={{ backgroundColor: COLORS.success, borderRadius: "9999px" }}
+                />
+                {shortAddress(address)}
+              </span>
+            </div>
+            <InfoRow label="Cost" value="Gas fee only" />
+            <InfoRow label="Resets" value="00:00 UTC daily" />
           </div>
 
           {wrongNetwork ? (
             <Button
-              className="w-full"
+              className="w-full justify-center font-medium"
+              style={{
+                height: "52px",
+                borderRadius: "8px",
+                backgroundColor: COLORS.primary,
+                color: COLORS.text,
+                border: "none",
+              }}
               disabled={switching}
               onClick={async () => {
                 try {
                   await switchToRitual();
                 } catch (err) {
-                  toast.error(
-                    err instanceof Error ? err.message : "Could not switch network.",
-                  );
+                  toast.error(err instanceof Error ? err.message : "Could not switch network.");
                 }
               }}
             >
@@ -127,22 +186,35 @@ export function WalletGate({ children }: { children: React.ReactNode }) {
             </Button>
           ) : (
             <Button
-              className="w-full bg-profit text-background hover:bg-profit/90"
-              disabled={paying}
+              className="w-full justify-center font-medium"
+              style={{
+                height: "52px",
+                borderRadius: "8px",
+                backgroundColor: COLORS.primary,
+                color: COLORS.text,
+                border: "none",
+              }}
+              disabled={unlocking}
               onClick={async () => {
                 try {
-                  await payForToday();
-                  toast.success("✅ Access granted for today!");
+                  await unlockAccess();
+                  toast.success("Access granted for today.");
                 } catch {
                   toast.error("Transaction failed. Please try again.");
                 }
               }}
             >
-              {paying ? <Loader2 className="size-4 animate-spin" /> : null}
-              {paying ? "Confirming on Ritual Chain..." : "Pay for Today's Access"}
+              {unlocking ? <Loader2 className="size-4 animate-spin" /> : null}
+              {unlocking ? "Confirming transaction..." : "Unlock Access"}
             </Button>
           )}
 
+          <p
+            className="text-center"
+            style={{ color: COLORS.muted, fontSize: "12px", marginTop: "16px", lineHeight: 1.5 }}
+          >
+            You will be prompted to confirm a transaction in MetaMask
+          </p>
         </Overlay>
       </>
     );
