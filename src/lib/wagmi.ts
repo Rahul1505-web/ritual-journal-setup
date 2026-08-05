@@ -79,7 +79,7 @@ export const wagmiConfig = createConfig({
         ]
       : []),
   ],
-  transports: { [ritualChain.id]: http("https://rpc.ritualfoundation.org") },
+  transports: { [ritualChain.id]: http(RPC_URL) },
 });
 
 export function shortAddress(address?: string | null) {
