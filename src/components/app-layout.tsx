@@ -106,7 +106,10 @@ export function AppLayout({
               </p>
             ) : null}
           </div>
-          {actions ? <div className="flex shrink-0 items-center gap-3">{actions}</div> : null}
+          <div className="flex shrink-0 items-center gap-3">
+            <WalletStatus />
+            {actions}
+          </div>
         </header>
         {isDemo ? (
           <div className="mx-5 mt-6 rounded-xl border border-warning/30 bg-warning/10 px-5 py-3 text-xs font-medium text-muted-foreground sm:mx-8">
