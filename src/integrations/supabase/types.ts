@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      daily_access: {
+        Row: {
+          created_at: string
+          id: string
+          paid_at: string
+          tx_hash: string
+          user_id: string
+          wallet_address: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          paid_at?: string
+          tx_hash?: string
+          user_id?: string
+          wallet_address: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          paid_at?: string
+          tx_hash?: string
+          user_id?: string
+          wallet_address?: string
+        }
+        Relationships: []
+      }
       rules: {
         Row: {
           created_at: string
