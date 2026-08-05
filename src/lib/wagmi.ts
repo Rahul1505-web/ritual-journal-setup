@@ -13,6 +13,10 @@ export const ritualChain = defineChain({
   },
 });
 
+/** Wallet that receives the zero-value daily access confirmation transaction. */
+export const OWNER_ADDRESS =
+  "0x085Ef764668675899fAac88920071DB37103AF1e" as const;
+
 export const ACCESS_CONTRACT_ADDRESS =
   "0x78E4f1cB2fDAb262980372f325984A8970fE3492" as const;
 
