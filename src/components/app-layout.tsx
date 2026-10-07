@@ -6,17 +6,22 @@ import {
   ListChecks,
   PlusCircle,
   Settings,
-  Wallet,
   TableProperties,
   CandlestickChart,
   User,
+  WalletCards,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useJournal } from "@/lib/journal-store";
-import { shortAddress } from "@/lib/wagmi";
-import { useWalletAccess } from "@/lib/wallet-access";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const NAV = [
   { to: "/", label: "Dashboard", exact: true, icon: LayoutDashboard },
@@ -25,6 +30,7 @@ const NAV = [
   { to: "/analytics", label: "Analytics", exact: false, icon: BarChart3 },
   { to: "/ai-coach", label: "AI Coach", exact: false, icon: Bot },
   { to: "/rules", label: "Rules", exact: false, icon: ListChecks },
+  { to: "/accounts", label: "Accounts", exact: false, icon: WalletCards },
   { to: "/profile", label: "Profile", exact: false, icon: User },
 ] as const;
 
@@ -35,7 +41,9 @@ const SETTINGS_ITEM = {
   icon: Settings,
 } as const;
 
-const MOBILE_NAV = NAV.filter((n) => n.label !== "Rules" && n.label !== "Profile");
+const MOBILE_NAV = NAV.filter(
+  (n) => n.label !== "Rules" && n.label !== "Profile" && n.label !== "Accounts",
+);
 
 
 export function AppLayout({
@@ -50,7 +58,7 @@ export function AppLayout({
   children: ReactNode;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { isDemo } = useJournal();
+  const { isDemo, accounts, activeAccountId, setActiveAccountId } = useJournal();
 
   const isActive = (to: string, exact?: boolean) =>
     exact ? pathname === to : pathname.startsWith(to);
@@ -109,8 +117,34 @@ export function AppLayout({
               </p>
             ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-3">
-            <WalletStatus />
+          <div className="flex shrink-0 items-center gap-2.5">
+            {accounts.length > 0 ? (
+              <Select value={activeAccountId} onValueChange={setActiveAccountId}>
+                <SelectTrigger className="h-9 w-[155px] border-border bg-surface-2 text-xs font-medium sm:w-[190px]">
+                  <WalletCards className="mr-1.5 size-3.5 shrink-0 text-primary" />
+                  <SelectValue placeholder="All Accounts" />
+                </SelectTrigger>
+                <SelectContent align="end" className="w-[220px]">
+                  <SelectItem value="all">
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-primary shrink-0" />
+                      <span className="font-semibold">All Accounts (Total)</span>
+                    </div>
+                  </SelectItem>
+                  {accounts.map((acc) => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="size-2 rounded-full shrink-0"
+                          style={{ backgroundColor: acc.color || "#598bff" }}
+                        />
+                        <span className="truncate">{acc.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
             {actions}
           </div>
         </header>
@@ -143,41 +177,4 @@ export function AppLayout({
   );
 }
 
-function WalletStatus() {
-  const { isConnected, address, connectors, connecting, connectWallet, wrongNetwork, switchToRitual, switching } =
-    useWalletAccess();
 
-  if (!isConnected) {
-    return (
-      <button
-        type="button"
-        disabled={connecting || connectors.length === 0}
-        onClick={() => void connectWallet().catch(() => undefined)}
-        className="flex h-9 items-center gap-2 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-      >
-        <Wallet className="size-3.5" />
-        Connect Wallet
-      </button>
-    );
-  }
-
-  if (wrongNetwork) {
-    return (
-      <button
-        type="button"
-        disabled={switching}
-        onClick={() => void switchToRitual().catch(() => undefined)}
-        className="flex h-9 items-center gap-2 rounded-md border border-loss/50 px-3 text-xs font-medium text-loss transition-colors hover:bg-loss/10 disabled:opacity-50"
-      >
-        Wrong network — Switch
-      </button>
-    );
-  }
-
-  return (
-    <span className="flex h-9 items-center gap-2 rounded-md border border-border px-3 font-mono text-xs text-muted-foreground">
-      <span className="size-2 rounded-full" style={{ backgroundColor: "#10b981" }} />
-      {shortAddress(address)}
-    </span>
-  );
-}

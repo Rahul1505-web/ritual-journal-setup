@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticated/accounts'
 import { Route as AuthenticatedAddTradeRouteImport } from './routes/_authenticated/add-trade'
 import { Route as AuthenticatedAiCoachRouteImport } from './routes/_authenticated/ai-coach'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
@@ -33,6 +34,11 @@ const AuthRoute = AuthRouteImport.update({
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAccountsRoute = AuthenticatedAccountsRouteImport.update({
+  id: '/accounts',
+  path: '/accounts',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAddTradeRoute = AuthenticatedAddTradeRouteImport.update({
@@ -81,6 +87,7 @@ const AuthenticatedTradeLogTradeIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/auth': typeof AuthRoute
+  '/accounts': typeof AuthenticatedAccountsRoute
   '/add-trade': typeof AuthenticatedAddTradeRoute
   '/ai-coach': typeof AuthenticatedAiCoachRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
@@ -92,6 +99,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
+  '/accounts': typeof AuthenticatedAccountsRoute
   '/add-trade': typeof AuthenticatedAddTradeRoute
   '/ai-coach': typeof AuthenticatedAiCoachRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_authenticated/accounts': typeof AuthenticatedAccountsRoute
   '/_authenticated/add-trade': typeof AuthenticatedAddTradeRoute
   '/_authenticated/ai-coach': typeof AuthenticatedAiCoachRoute
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/accounts'
     | '/add-trade'
     | '/ai-coach'
     | '/analytics'
@@ -132,6 +142,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
+    | '/accounts'
     | '/add-trade'
     | '/ai-coach'
     | '/analytics'
@@ -145,6 +156,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_authenticated'
     | '/auth'
+    | '/_authenticated/accounts'
     | '/_authenticated/add-trade'
     | '/_authenticated/ai-coach'
     | '/_authenticated/analytics'
@@ -182,6 +194,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/accounts': {
+      id: '/_authenticated/accounts'
+      path: '/accounts'
+      fullPath: '/accounts'
+      preLoaderRoute: typeof AuthenticatedAccountsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/add-trade': {
@@ -244,6 +263,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAccountsRoute: typeof AuthenticatedAccountsRoute
   AuthenticatedAddTradeRoute: typeof AuthenticatedAddTradeRoute
   AuthenticatedAiCoachRoute: typeof AuthenticatedAiCoachRoute
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
@@ -256,6 +276,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAccountsRoute: AuthenticatedAccountsRoute,
   AuthenticatedAddTradeRoute: AuthenticatedAddTradeRoute,
   AuthenticatedAiCoachRoute: AuthenticatedAiCoachRoute,
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,

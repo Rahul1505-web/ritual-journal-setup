@@ -43,11 +43,12 @@ export const Route = createFileRoute("/_authenticated/trade-log/$tradeId")({
 function TradeDetail() {
   const { tradeId } = Route.useParams();
   const navigate = useNavigate();
-  const { trades, updateTradeCharts, deleteTrade, isDemo, loading } = useJournal();
+  const { trades, accounts, updateTradeCharts, deleteTrade, isDemo, loading } = useJournal();
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const trade = trades.find((t) => t.id === tradeId);
+  const tradeAccount = accounts.find((a) => a.id === trade?.accountId) ?? accounts[0];
   const charts = trade?.charts ?? [];
 
   const back = (
@@ -87,10 +88,36 @@ function TradeDetail() {
           </Badge>
         </div>
         <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+          <Detail label="Trading Account" value={tradeAccount ? `${tradeAccount.name} (${tradeAccount.broker})` : "Main Account"} />
           <Detail label="Market" value={trade.market} />
           <Detail label="Trade type" value={trade.tradeType} />
           <Detail label="Entry" value={money(trade.entry)} />
+          {trade.sl != null ? <Detail label="Stop Loss (SL)" value={money(trade.sl)} /> : null}
+          {trade.tp != null ? <Detail label="Take Profit (TP)" value={money(trade.tp)} /> : null}
           <Detail label="Exit" value={money(trade.exit)} />
+          {trade.sl != null ? (
+            <Detail
+              label="Realized R:R (Exit / SL)"
+              value={(() => {
+                const risk = trade.direction === "BUY" ? trade.entry - trade.sl : trade.sl - trade.entry;
+                const reward = trade.direction === "BUY" ? trade.exit - trade.entry : trade.entry - trade.exit;
+                if (risk <= 0) return "N/A";
+                if (reward >= 0) return `1 : ${(reward / risk).toFixed(2)}`;
+                return `-1 : ${(Math.abs(reward) / risk).toFixed(2)}`;
+              })()}
+            />
+          ) : null}
+          {trade.sl != null && trade.tp != null ? (
+            <Detail
+              label="Planned R:R (Target)"
+              value={(() => {
+                const risk = trade.direction === "BUY" ? trade.entry - trade.sl : trade.sl - trade.entry;
+                const reward = trade.direction === "BUY" ? trade.tp - trade.entry : trade.entry - trade.tp;
+                if (risk <= 0 || reward <= 0) return "N/A";
+                return `1 : ${(reward / risk).toFixed(2)}`;
+              })()}
+            />
+          ) : null}
           <Detail label="Quantity" value={String(trade.quantity)} />
           <Detail label="Emotion" value={trade.emotion} />
           <Detail label="Date" value={formatDate(trade.date)} />

@@ -29,11 +29,76 @@ export interface Trade {
   emotion: Emotion;
   tags: MistakeTag[];
   notes: string;
+  /** Stop Loss price */
+  sl?: number;
+  /** Take Profit price */
+  tp?: number;
+  /** Account this trade belongs to */
+  accountId?: string;
   /** Supabase Storage paths of attached chart screenshots */
   charts?: string[];
   rulesFollowed?: string[];
   rulesBroken?: string[];
 }
+
+export type AccountType =
+  | "Personal Live"
+  | "Prop Firm Challenge"
+  | "Prop Firm Funded"
+  | "Crypto Futures"
+  | "Equity / F&O"
+  | "Demo / Paper";
+
+export type AccountStatus = "active" | "funded" | "breached" | "archived";
+
+export interface TradingAccount {
+  id: string;
+  name: string;
+  type: AccountType;
+  broker: string;
+  initialBalance: number;
+  currency: string;
+  targetProfitPercent?: number;
+  maxDrawdownPercent?: number;
+  color?: string;
+  status: AccountStatus;
+  description?: string;
+  createdAt?: string;
+}
+
+export const ACCOUNT_TYPES: AccountType[] = [
+  "Personal Live",
+  "Prop Firm Challenge",
+  "Prop Firm Funded",
+  "Crypto Futures",
+  "Equity / F&O",
+  "Demo / Paper",
+];
+
+export const BROKERS = [
+  "Zerodha",
+  "Angel One",
+  "Groww",
+  "Binance",
+  "Bybit",
+  "FTMO",
+  "FundedNext",
+  "IC Markets",
+  "Exness",
+  "Interactive Brokers",
+  "Other Broker",
+];
+
+export const CURRENCIES = ["$", "₹", "€", "£", "A$", "C$"];
+
+export const formatCurrency = (n: number, currency = "$") =>
+  `${n < 0 ? "-" : ""}${currency}${Math.abs(n).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+export const signedCurrency = (n: number, currency = "$") =>
+  `${n > 0 ? "+" : ""}${formatCurrency(n, currency)}`;
 
 export interface Rule {
   id: string;

@@ -16,8 +16,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { OWNER_ADDRESS, shortAddress } from "@/lib/wagmi";
-import { startOfUtcDay, useWalletAccess } from "@/lib/wallet-access";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   head: () => ({
@@ -25,12 +23,12 @@ export const Route = createFileRoute("/_authenticated/profile")({
       { title: "Profile — TradeLog Pro" },
       {
         name: "description",
-        content: "Manage your trader profile, linked Google account, wallet, base currency and starting equity.",
+        content: "Manage your trader profile, base currency and starting equity.",
       },
       { property: "og:title", content: "Profile — TradeLog Pro" },
       {
         property: "og:description",
-        content: "Manage your trader profile, linked account, wallet and equity settings.",
+        content: "Manage your trader profile and account settings.",
       },
     ],
   }),
@@ -40,7 +38,6 @@ export const Route = createFileRoute("/_authenticated/profile")({
 function Profile() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isConnected, address, disconnectWallet } = useWalletAccess();
   const [email, setEmail] = useState<string>("");
   const [name, setName] = useState<string>("");
 
@@ -60,7 +57,7 @@ function Profile() {
   };
 
   return (
-    <AppLayout title="Profile" subtitle="Your account, wallet and trading defaults">
+    <AppLayout title="Profile" subtitle="Your account and trading defaults">
       <div className="grid gap-6 xl:grid-cols-2">
         <Card className="gap-6 p-6">
           <h2 className="text-lg font-semibold">User info</h2>
@@ -81,21 +78,7 @@ function Profile() {
               {email ? (
                 <span className="break-all">{email}</span>
               ) : (
-                <span className="text-muted-foreground">No email account linked</span>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Wallet address</Label>
-            <div className="rounded-lg border border-border bg-surface-2 px-3 py-2.5 font-mono text-xs">
-              {isConnected && address ? (
-                <span className="flex items-center gap-2">
-                  <span className="size-2 shrink-0 rounded-full bg-profit" />
-                  <span className="break-all">{address}</span>
-                </span>
-              ) : (
-                <span className="font-sans text-sm text-muted-foreground">No wallet connected</span>
+                <span className="text-muted-foreground">No email linked</span>
               )}
             </div>
           </div>
@@ -128,22 +111,12 @@ function Profile() {
         </Card>
 
         <Card className="gap-6 p-6">
-          <h2 className="text-lg font-semibold">Actions</h2>
+          <h2 className="text-lg font-semibold">Account</h2>
           <p className="text-sm text-muted-foreground">
-            Disconnecting your wallet keeps you signed in. Signing out clears your session entirely.
+            Sign out to switch accounts. Your data is saved and will be here when you sign back in
+            with the same email.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button
-              variant="outline"
-              disabled={!isConnected}
-              onClick={() => {
-                disconnectWallet();
-                toast.success("Wallet disconnected.");
-              }}
-              className="border-loss/60 text-loss hover:bg-loss/10 hover:text-loss"
-            >
-              Disconnect Wallet
-            </Button>
             <Button
               variant="outline"
               onClick={() => void signOut()}
@@ -153,97 +126,7 @@ function Profile() {
             </Button>
           </div>
         </Card>
-
-        <OwnerPanel />
       </div>
     </AppLayout>
-  );
-}
-
-function OwnerPanel() {
-  const { address } = useWalletAccess();
-  const isOwner = address?.toLowerCase() === OWNER_ADDRESS.toLowerCase();
-  const [today, setToday] = useState(0);
-  const [total, setTotal] = useState(0);
-  const [recent, setRecent] = useState<
-    { id: string; wallet_address: string; paid_at: string; tx_hash: string }[]
-  >([]);
-
-  useEffect(() => {
-    if (!isOwner) return;
-    void (async () => {
-      const start = startOfUtcDay().toISOString();
-      const [{ count: todayCount }, { count: totalCount }, { data }] = await Promise.all([
-        supabase
-          .from("daily_access")
-          .select("id", { count: "exact", head: true })
-          .gte("paid_at", start),
-        supabase.from("daily_access").select("id", { count: "exact", head: true }),
-        supabase
-          .from("daily_access")
-          .select("id, wallet_address, paid_at, tx_hash")
-          .order("paid_at", { ascending: false })
-          .limit(10),
-      ]);
-      setToday(todayCount ?? 0);
-      setTotal(totalCount ?? 0);
-      setRecent(data ?? []);
-    })();
-  }, [isOwner]);
-
-  if (!isOwner) return null;
-
-  return (
-    <Card className="gap-6 p-6 xl:col-span-2">
-      <div>
-        <h2 className="text-lg font-semibold">Owner</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Daily access activity across all users.
-        </p>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-border bg-surface-2 p-4">
-          <p className="text-xs text-muted-foreground">Users today</p>
-          <p className="mt-1 font-mono text-2xl font-semibold">{today}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-surface-2 p-4">
-          <p className="text-xs text-muted-foreground">Total access payments</p>
-          <p className="mt-1 font-mono text-2xl font-semibold">{total}</p>
-        </div>
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-left text-sm">
-          <thead className="text-xs text-muted-foreground">
-            <tr className="border-b border-border">
-              <th className="px-4 py-3 font-medium">Wallet</th>
-              <th className="px-4 py-3 font-medium">Time (UTC)</th>
-              <th className="px-4 py-3 font-medium">Tx hash</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {recent.map((r) => (
-              <tr key={r.id}>
-                <td className="px-4 py-3 font-mono text-xs">{shortAddress(r.wallet_address)}</td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">
-                  {new Date(r.paid_at).toISOString().slice(0, 16).replace("T", " ")}
-                </td>
-                <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                  {r.tx_hash ? shortAddress(r.tx_hash) : "—"}
-                </td>
-              </tr>
-            ))}
-            {recent.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-8 text-center text-xs text-muted-foreground">
-                  No access payments recorded yet.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-    </Card>
   );
 }

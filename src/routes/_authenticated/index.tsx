@@ -38,15 +38,24 @@ export const Route = createFileRoute("/_authenticated/")({
 });
 
 function Dashboard() {
-  const { trades } = useJournal();
-  const s = stats(trades);
-  const curve = equityCurve(trades);
-  const recent = sortByDate(trades).reverse().slice(0, 10);
+  const { filteredTrades, activeAccountId, accounts } = useJournal();
+  const currentAccount = accounts.find((a) => a.id === activeAccountId);
+  const activeTrades = filteredTrades;
+  const s = stats(activeTrades);
+  const startingEquity = currentAccount
+    ? currentAccount.initialBalance
+    : accounts.reduce((sum, a) => sum + a.initialBalance, 0);
+  const curve = equityCurve(activeTrades, startingEquity || 25000);
+  const recent = sortByDate(activeTrades).reverse().slice(0, 10);
 
   return (
     <AppLayout
       title="Dashboard"
-      subtitle="Your performance at a glance"
+      subtitle={
+        currentAccount
+          ? `${currentAccount.name} (${currentAccount.broker}) · Initial: ${currentAccount.currency}${currentAccount.initialBalance.toLocaleString()}`
+          : "Combined Portfolio · All Accounts"
+      }
       actions={
         <Button asChild>
           <Link to="/add-trade">

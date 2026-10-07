@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowUpDown, Filter, SearchX, X } from "lucide-react";
 
 import { AppLayout } from "@/components/app-layout";
@@ -41,8 +41,9 @@ export const Route = createFileRoute("/_authenticated/trade-log/")({
 type SortKey = "date" | "pnl" | "symbol";
 
 function TradeLog() {
-  const { trades } = useJournal();
+  const { trades, accounts, activeAccountId } = useJournal();
   const navigate = useNavigate();
+  const [selectedAccount, setSelectedAccount] = useState<string>(activeAccountId);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [market, setMarket] = useState("all");
@@ -52,8 +53,16 @@ function TradeLog() {
   const [sort, setSort] = useState<SortKey>("date");
   const [asc, setAsc] = useState(false);
 
+  useEffect(() => {
+    setSelectedAccount(activeAccountId);
+  }, [activeAccountId]);
+
   const rows = useMemo(() => {
+    const defaultAccId = accounts[0]?.id;
     const filtered = trades.filter((t) => {
+      if (selectedAccount !== "all") {
+        if ((t.accountId ?? defaultAccId) !== selectedAccount) return false;
+      }
       const d = new Date(t.date);
       if (from && d < new Date(from)) return false;
       if (to && d > new Date(`${to}T23:59:59`)) return false;
@@ -113,7 +122,23 @@ function TradeLog() {
             <X className="size-4" /> Reset
           </Button>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Account</Label>
+            <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Accounts</SelectItem>
+                {accounts.map((acc) => (
+                  <SelectItem key={acc.id} value={acc.id}>
+                    {acc.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1.5">
             <Label className="text-xs">From</Label>
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -147,9 +172,11 @@ function TradeLog() {
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                 {headerButton("symbol", "Symbol", "pl-4 sm:pl-5")}
+                <th className="px-4 py-2.5 font-semibold">Account</th>
                 <th className="px-4 py-2.5 font-semibold">Market</th>
                 <th className="px-4 py-2.5 font-semibold">Direction</th>
                 <th className="px-4 py-2.5 font-semibold">Type</th>
+                <th className="px-4 py-2.5 font-semibold">R:R</th>
                 <th className="px-4 py-2.5 font-semibold">Emotion</th>
                 {headerButton("pnl", "P&L", "text-right")}
                 {headerButton("date", "Date", "text-right pr-4 sm:pr-5")}
@@ -168,6 +195,25 @@ function TradeLog() {
                   className="cursor-pointer border-b border-border/50 transition-colors duration-200 hover:bg-muted/40"
                 >
                   <td className="px-4 py-3 font-mono font-semibold sm:px-5">{t.symbol}</td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const acc = accounts.find((a) => a.id === t.accountId) ?? accounts[0];
+                      return acc ? (
+                        <span
+                          className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-semibold border"
+                          style={{
+                            borderColor: `${acc.color || "#598bff"}40`,
+                            backgroundColor: `${acc.color || "#598bff"}15`,
+                            color: acc.color || "#598bff",
+                          }}
+                        >
+                          {acc.name}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      );
+                    })()}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">{t.market}</td>
                   <td className="px-4 py-3">
                     <Badge
@@ -178,6 +224,18 @@ function TradeLog() {
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{t.tradeType}</td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    {t.sl != null ? (() => {
+                      const risk = t.direction === "BUY" ? t.entry - t.sl : t.sl - t.entry;
+                      const reward = t.direction === "BUY" ? t.exit - t.entry : t.entry - t.exit;
+                      if (risk <= 0) return <span className="text-muted-foreground">—</span>;
+                      if (reward >= 0) {
+                        return <span className="text-profit">1 : {(reward / risk).toFixed(2)}</span>;
+                      } else {
+                        return <span className="text-loss">-1 : {(Math.abs(reward) / risk).toFixed(2)}</span>;
+                      }
+                    })() : <span className="text-muted-foreground">—</span>}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">{t.emotion}</td>
                   <td className="px-4 py-3 text-right">
                     <PnlCell value={pnl(t)} />
