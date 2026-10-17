@@ -1,10 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CandlestickChart, Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react";
+import { CandlestickChart, Eye, EyeOff, Loader2, Lock, Mail, RefreshCw, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { getStoredGuestUser, setGuestUser } from "@/lib/auth-helpers";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -34,10 +35,18 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [unconfirmedEmail, setUnconfirmedEmail] = useState<string | null>(null);
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/", replace: true });
+      if (data.session) {
+        navigate({ to: "/", replace: true });
+        return;
+      }
+      const guest = getStoredGuestUser();
+      if (guest) {
+        navigate({ to: "/", replace: true });
+      }
     });
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN" && session) navigate({ to: "/", replace: true });
@@ -54,15 +63,53 @@ function AuthPage() {
     setBusy(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        toast.success("Account created! Check your email to confirm, or sign in directly.");
+
+        if (data.session) {
+          toast.success("Account created! Welcome to TradeLog Pro.");
+          navigate({ to: "/", replace: true });
+        } else {
+          // Supabase mailer requires confirmation or emails are delayed.
+          // Automatically initialize user workspace so they can start immediately!
+          setGuestUser(email);
+          toast.success("Account created! Entering your private journal workspace.");
+          navigate({ to: "/", replace: true });
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        if (error) {
+          setUnconfirmedEmail(email);
+          throw error;
+        }
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Authentication failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleInstantAccess = (targetEmail?: string) => {
+    const activeEmail = targetEmail || email || "trader@tradelog.local";
+    setGuestUser(activeEmail);
+    toast.success(`Welcome! Entered TradeLog Pro as ${activeEmail}`);
+    navigate({ to: "/", replace: true });
+  };
+
+  const handleResend = async () => {
+    const target = unconfirmedEmail || email;
+    if (!target) {
+      toast.error("Please enter your email address.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.resend({ type: "signup", email: target });
+      if (error) throw error;
+      toast.success(`Confirmation email resent to ${target}. Please check spam/junk.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to resend confirmation email.");
     } finally {
       setBusy(false);
     }
@@ -74,13 +121,13 @@ function AuthPage() {
       style={{ backgroundColor: "#0a0d1a" }}
     >
       <div
-        className="w-full max-w-[420px]"
+        className="w-full max-w-[440px]"
         style={{
           backgroundColor: "#111827",
           borderRadius: "16px",
           border: "1px solid rgba(255, 255, 255, 0.08)",
           boxShadow: "0 24px 64px rgba(0, 0, 0, 0.45)",
-          padding: "48px",
+          padding: "40px",
         }}
       >
         <div className="flex flex-col items-center text-center">
@@ -88,12 +135,12 @@ function AuthPage() {
           <div
             className="grid place-items-center"
             style={{
-              width: "64px",
-              height: "64px",
+              width: "60px",
+              height: "60px",
               borderRadius: "16px",
               backgroundColor: "rgba(89, 139, 255, 0.12)",
               color: "#598bff",
-              marginBottom: "24px",
+              marginBottom: "20px",
             }}
           >
             <CandlestickChart className="size-8" />
@@ -103,7 +150,7 @@ function AuthPage() {
             className="font-bold tracking-tight"
             style={{
               color: "#ffffff",
-              fontSize: "28px",
+              fontSize: "26px",
               lineHeight: 1.2,
               marginBottom: "8px",
             }}
@@ -113,10 +160,10 @@ function AuthPage() {
 
           <p
             style={{
-              color: "#6b7280",
+              color: "#9ca3af",
               fontSize: "14px",
               lineHeight: 1.5,
-              marginBottom: "32px",
+              marginBottom: "28px",
             }}
           >
             {mode === "signin"
@@ -125,9 +172,46 @@ function AuthPage() {
           </p>
         </div>
 
+        {/* Unconfirmed / Email help notice */}
+        {unconfirmedEmail && (
+          <div
+            className="mb-5 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3.5 text-xs text-amber-200"
+            style={{ lineHeight: 1.5 }}
+          >
+            <div className="font-semibold text-amber-300 mb-1 flex items-center gap-1.5">
+              <Zap className="size-3.5 text-amber-400" />
+              <span>Email confirmation pending or delayed?</span>
+            </div>
+            <p className="text-amber-200/80 mb-2.5">
+              Free mail delivery can be delayed. You don't have to wait — jump straight in now:
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => handleInstantAccess(unconfirmedEmail)}
+                className="bg-amber-500 hover:bg-amber-600 text-black font-semibold text-xs h-7 px-3"
+              >
+                Enter Instant Workspace
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => void handleResend()}
+                disabled={busy}
+                className="text-amber-300 hover:bg-amber-500/15 text-xs h-7 px-2 gap-1"
+              >
+                <RefreshCw className="size-3" />
+                Resend link
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Tab switcher */}
         <div
-          className="flex mb-6"
+          className="flex mb-5"
           style={{
             backgroundColor: "#1f2937",
             borderRadius: "10px",
@@ -138,7 +222,10 @@ function AuthPage() {
             <button
               key={m}
               type="button"
-              onClick={() => setMode(m)}
+              onClick={() => {
+                setMode(m);
+                setUnconfirmedEmail(null);
+              }}
               style={{
                 flex: 1,
                 padding: "8px 0",
@@ -149,7 +236,7 @@ function AuthPage() {
                 cursor: "pointer",
                 transition: "all 0.2s",
                 backgroundColor: mode === m ? "#598bff" : "transparent",
-                color: mode === m ? "#ffffff" : "#6b7280",
+                color: mode === m ? "#ffffff" : "#9ca3af",
               }}
             >
               {m === "signin" ? "Sign In" : "Sign Up"}
@@ -168,7 +255,7 @@ function AuthPage() {
                 left: "14px",
                 top: "50%",
                 transform: "translateY(-50%)",
-                color: "#4b5563",
+                color: "#6b7280",
                 pointerEvents: "none",
               }}
             />
@@ -203,7 +290,7 @@ function AuthPage() {
                 left: "14px",
                 top: "50%",
                 transform: "translateY(-50%)",
-                color: "#4b5563",
+                color: "#6b7280",
                 pointerEvents: "none",
               }}
             />
@@ -238,7 +325,7 @@ function AuthPage() {
                 background: "none",
                 border: "none",
                 cursor: "pointer",
-                color: "#4b5563",
+                color: "#6b7280",
                 padding: 0,
               }}
             >
@@ -249,9 +336,9 @@ function AuthPage() {
           <Button
             type="submit"
             disabled={busy}
-            className="w-full justify-center font-medium mt-2"
+            className="w-full justify-center font-medium mt-1"
             style={{
-              height: "52px",
+              height: "50px",
               borderRadius: "10px",
               fontSize: "15px",
               backgroundColor: "#598bff",
@@ -269,19 +356,45 @@ function AuthPage() {
           </Button>
         </form>
 
+        {/* Divider */}
+        <div className="relative my-4 flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-white/10" />
+          </div>
+          <span className="relative bg-[#111827] px-3 text-xs uppercase tracking-wider text-gray-500">
+            or
+          </span>
+        </div>
+
+        {/* Instant Access Button */}
+        <Button
+          type="button"
+          onClick={() => handleInstantAccess()}
+          variant="outline"
+          className="w-full justify-center font-medium gap-2 border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-white"
+          style={{
+            height: "48px",
+            borderRadius: "10px",
+            fontSize: "14px",
+          }}
+        >
+          <Zap className="size-4 text-amber-400" />
+          ⚡ Instant Access (No Email Needed)
+        </Button>
+
         {/* Footer note */}
         <div
           className="flex items-center justify-center gap-2"
           style={{
             color: "#6b7280",
             fontSize: "12px",
-            marginTop: "24px",
+            marginTop: "20px",
             lineHeight: 1.4,
           }}
         >
           <Lock className="size-3.5" />
           <span>
-            Same email = same journal on any device. Your data is private.
+            Your data is private. Full AI Coach & trade analytics unlocked.
           </span>
         </div>
       </div>

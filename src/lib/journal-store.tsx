@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { supabase } from "@/integrations/supabase/client";
+import { getEffectiveUser } from "./auth-helpers";
 import { CHART_BUCKET } from "./trade-charts";
 import {
   DEFAULT_RULES,
@@ -22,6 +23,29 @@ import {
   type Direction,
   type TradingAccount,
 } from "./trades";
+
+const LOCAL_TRADES_KEY = "tradelog_local_trades";
+const LOCAL_RULES_KEY = "tradelog_local_rules";
+const LOCAL_ACCOUNTS_KEY = "tradelog_local_accounts";
+
+function getLocalData<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function setLocalData<T>(key: string, value: T): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore quota errors
+  }
+}
 
 export const DEFAULT_ACCOUNTS: TradingAccount[] = [
   {
@@ -181,12 +205,22 @@ export function JournalProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    const { data: userData } = await supabase.auth.getUser();
-    const user = userData.user;
-    if (!user) {
+    const effectiveUser = await getEffectiveUser();
+    if (!effectiveUser) {
       setTrades([]);
       setRules([]);
       setAccounts(DEFAULT_ACCOUNTS);
+      setLoading(false);
+      return;
+    }
+
+    if (effectiveUser.isGuest) {
+      const loadedAccounts = getLocalData<TradingAccount[]>(LOCAL_ACCOUNTS_KEY, DEFAULT_ACCOUNTS);
+      const loadedRules = getLocalData<Rule[]>(LOCAL_RULES_KEY, DEFAULT_RULES);
+      const loadedTrades = getLocalData<Trade[]>(LOCAL_TRADES_KEY, []);
+      setAccounts(loadedAccounts);
+      setRules(loadedRules);
+      setTrades(loadedTrades);
       setLoading(false);
       return;
     }
@@ -218,7 +252,7 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       const { data: seededAcc } = await supabase
         .from("rules")
         .insert({
-          user_id: user.id,
+          user_id: effectiveUser.id,
           rule_text: `__ACCOUNT__:${JSON.stringify(defaultAcc)}`,
         })
         .select("id")
@@ -253,7 +287,7 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       // Give every new account the starter rule set so the checklist is usable.
       const { data: seededRules } = await supabase
         .from("rules")
-        .insert(DEFAULT_RULES.map((r) => ({ user_id: user.id, rule_text: r.text })))
+        .insert(DEFAULT_RULES.map((r) => ({ user_id: effectiveUser.id, rule_text: r.text })))
         .select("id,rule_text");
       ruleItems = (seededRules ?? []) as { id: string; rule_text: string }[];
     }
@@ -277,9 +311,8 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       if (accounts.length >= 15) {
         throw new Error("Maximum 15 accounts allowed. Please delete or archive an existing account.");
       }
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData.user;
-      if (!user) throw new Error("You must be signed in to add an account.");
+      const effectiveUser = await getEffectiveUser();
+      if (!effectiveUser) throw new Error("You must be signed in to add an account.");
 
       const newId = `acc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
       const newAccount: TradingAccount = {
@@ -288,10 +321,17 @@ export function JournalProvider({ children }: { children: ReactNode }) {
         createdAt: new Date().toISOString(),
       };
 
+      if (effectiveUser.isGuest) {
+        const next = [...accounts, newAccount];
+        setAccounts(next);
+        setLocalData(LOCAL_ACCOUNTS_KEY, next);
+        return newAccount;
+      }
+
       const { data: inserted, error } = await supabase
         .from("rules")
         .insert({
-          user_id: user.id,
+          user_id: effectiveUser.id,
           rule_text: `__ACCOUNT__:${JSON.stringify(newAccount)}`,
         })
         .select("id")
@@ -305,7 +345,7 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       await refresh();
       return newAccount;
     },
-    [accounts.length, refresh],
+    [accounts, refresh],
   );
 
   const updateAccount = useCallback(
@@ -314,6 +354,14 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       if (!existing) throw new Error("Account not found.");
 
       const updated: TradingAccount = { ...existing, ...updates };
+      const effectiveUser = await getEffectiveUser();
+      if (effectiveUser?.isGuest) {
+        const next = accounts.map((a) => (a.id === id ? updated : a));
+        setAccounts(next);
+        setLocalData(LOCAL_ACCOUNTS_KEY, next);
+        return;
+      }
+
       const rowId = accountRowMap[id];
       if (rowId) {
         const { error } = await supabase
@@ -333,6 +381,17 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       if (accounts.length <= 1) {
         throw new Error("You must keep at least one trading account.");
       }
+      const effectiveUser = await getEffectiveUser();
+      if (effectiveUser?.isGuest) {
+        if (activeAccountId === id) {
+          setActiveAccountId("all");
+        }
+        const next = accounts.filter((a) => a.id !== id);
+        setAccounts(next);
+        setLocalData(LOCAL_ACCOUNTS_KEY, next);
+        return;
+      }
+
       const rowId = accountRowMap[id];
       if (rowId) {
         const { error } = await supabase.from("rules").delete().eq("id", rowId);
@@ -349,11 +408,23 @@ export function JournalProvider({ children }: { children: ReactNode }) {
 
   const addTrade = useCallback(
     async (trade: Omit<Trade, "id">) => {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData.user;
-      if (!user) throw new Error("You must be signed in to log a trade.");
+      const effectiveUser = await getEffectiveUser();
+      if (!effectiveUser) throw new Error("You must be signed in to log a trade.");
+
+      if (effectiveUser.isGuest) {
+        const newTrade: Trade = {
+          ...trade,
+          id: `trade_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+          accountId: trade.accountId ?? accounts[0]?.id ?? "acc_main",
+        };
+        const next = [...trades, newTrade];
+        setTrades(next);
+        setLocalData(LOCAL_TRADES_KEY, next);
+        return;
+      }
+
       const { error } = await supabase.from("trades").insert({
-        user_id: user.id,
+        user_id: effectiveUser.id,
         symbol: trade.symbol,
         market_type: trade.market,
         direction: trade.direction,
@@ -376,18 +447,37 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
       await refresh();
     },
-    [accounts, refresh],
+    [accounts, trades, refresh],
   );
 
-  const updateTradeCharts = useCallback(async (id: string, charts: string[]) => {
-    setTrades((prev) => prev.map((t) => (t.id === id ? { ...t, charts } : t)));
-    const { error } = await supabase.from("trades").update({ chart_urls: charts }).eq("id", id);
-    if (error) throw error;
-  }, []);
+  const updateTradeCharts = useCallback(
+    async (id: string, charts: string[]) => {
+      const effectiveUser = await getEffectiveUser();
+      if (effectiveUser?.isGuest) {
+        const next = trades.map((t) => (t.id === id ? { ...t, charts } : t));
+        setTrades(next);
+        setLocalData(LOCAL_TRADES_KEY, next);
+        return;
+      }
+
+      setTrades((prev) => prev.map((t) => (t.id === id ? { ...t, charts } : t)));
+      const { error } = await supabase.from("trades").update({ chart_urls: charts }).eq("id", id);
+      if (error) throw error;
+    },
+    [trades],
+  );
 
   const deleteTrade = useCallback(
     async (id: string) => {
       const target = trades.find((t) => t.id === id);
+      const effectiveUser = await getEffectiveUser();
+      if (effectiveUser?.isGuest) {
+        const next = trades.filter((t) => t.id !== id);
+        setTrades(next);
+        setLocalData(LOCAL_TRADES_KEY, next);
+        return;
+      }
+
       const { error } = await supabase.from("trades").delete().eq("id", id);
       if (error) throw error;
       if (target?.charts?.length) {
@@ -400,25 +490,58 @@ export function JournalProvider({ children }: { children: ReactNode }) {
 
   const addRule = useCallback(
     async (text: string) => {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData.user;
-      if (!user) return;
-      const { error } = await supabase.from("rules").insert({ user_id: user.id, rule_text: text });
+      const effectiveUser = await getEffectiveUser();
+      if (!effectiveUser) return;
+
+      if (effectiveUser.isGuest) {
+        const newRule: Rule = {
+          id: `rule_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+          text,
+        };
+        const next = [...rules, newRule];
+        setRules(next);
+        setLocalData(LOCAL_RULES_KEY, next);
+        return;
+      }
+
+      const { error } = await supabase.from("rules").insert({ user_id: effectiveUser.id, rule_text: text });
       if (error) throw error;
       await refresh();
     },
-    [refresh],
+    [rules, refresh],
   );
 
-  const updateRule = useCallback(async (id: string, text: string) => {
-    setRules((prev) => prev.map((r) => (r.id === id ? { ...r, text } : r)));
-    await supabase.from("rules").update({ rule_text: text }).eq("id", id);
-  }, []);
+  const updateRule = useCallback(
+    async (id: string, text: string) => {
+      const effectiveUser = await getEffectiveUser();
+      if (effectiveUser?.isGuest) {
+        const next = rules.map((r) => (r.id === id ? { ...r, text } : r));
+        setRules(next);
+        setLocalData(LOCAL_RULES_KEY, next);
+        return;
+      }
 
-  const removeRule = useCallback(async (id: string) => {
-    setRules((prev) => prev.filter((r) => r.id !== id));
-    await supabase.from("rules").delete().eq("id", id);
-  }, []);
+      setRules((prev) => prev.map((r) => (r.id === id ? { ...r, text } : r)));
+      await supabase.from("rules").update({ rule_text: text }).eq("id", id);
+    },
+    [rules],
+  );
+
+  const removeRule = useCallback(
+    async (id: string) => {
+      const effectiveUser = await getEffectiveUser();
+      if (effectiveUser?.isGuest) {
+        const next = rules.filter((r) => r.id !== id);
+        setRules(next);
+        setLocalData(LOCAL_RULES_KEY, next);
+        return;
+      }
+
+      setRules((prev) => prev.filter((r) => r.id !== id));
+      await supabase.from("rules").delete().eq("id", id);
+    },
+    [rules],
+  );
 
   const isDemo = !loading && trades.length === 0;
 

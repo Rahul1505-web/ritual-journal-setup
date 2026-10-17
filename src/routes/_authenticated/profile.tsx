@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
+import { clearGuestUser, getEffectiveUser } from "@/lib/auth-helpers";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   head: () => ({
@@ -40,18 +41,22 @@ function Profile() {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState<string>("");
   const [name, setName] = useState<string>("");
+  const [isGuest, setIsGuest] = useState<boolean>(false);
 
   useEffect(() => {
-    void supabase.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? "");
-      const meta = data.user?.user_metadata as { full_name?: string; name?: string } | undefined;
-      setName(meta?.full_name ?? meta?.name ?? "");
+    void getEffectiveUser().then((user) => {
+      if (user) {
+        setEmail(user.email ?? "");
+        setName(user.user_metadata?.full_name ?? user.user_metadata?.name ?? "");
+        setIsGuest(!!user.isGuest);
+      }
     });
   }, []);
 
   const signOut = async () => {
     await queryClient.cancelQueries();
     queryClient.clear();
+    clearGuestUser();
     await supabase.auth.signOut();
     navigate({ to: "/auth", replace: true });
   };
@@ -73,7 +78,12 @@ function Profile() {
           </div>
 
           <div className="space-y-2">
-            <Label>Account email</Label>
+            <div className="flex items-center justify-between">
+              <Label>Account email</Label>
+              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${isGuest ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20' : 'bg-primary/10 text-primary border border-primary/20'}`}>
+                {isGuest ? '⚡ Instant Local Workspace' : '☁️ Cloud Synced'}
+              </span>
+            </div>
             <div className="rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm">
               {email ? (
                 <span className="break-all">{email}</span>
