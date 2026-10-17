@@ -5,11 +5,25 @@
 //     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { loadEnv } from "vite";
 
 export default defineConfig({
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
+  },
+  vite: {
+    plugins: [
+      {
+        name: "inject-server-env",
+        config(_, { mode }) {
+          // Load ALL .env vars (including non-VITE_ ones like GEMINI_API_KEY)
+          // and inject into process.env so SSR server functions can read them.
+          const env = loadEnv(mode, process.cwd(), "");
+          Object.assign(process.env, env);
+        },
+      },
+    ],
   },
 });
