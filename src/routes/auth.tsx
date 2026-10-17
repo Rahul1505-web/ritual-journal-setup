@@ -76,6 +76,15 @@ function buildSignMessage(address: string): string {
   );
 }
 
+function stringToHex(str: string): string {
+  return (
+    "0x" +
+    Array.from(new TextEncoder().encode(str))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+
 /* ─── Component ──────────────────────────────────────────────────────────── */
 function AuthPage() {
   const navigate = useNavigate();
@@ -131,29 +140,49 @@ function AuthPage() {
       /* Step 2 — sign deterministic message (no gas, no transaction) */
       setStep("signing");
       const message = buildSignMessage(address);
-      const signature = (await window.ethereum.request({
-        method: "personal_sign",
-        params: [message, address],
-      })) as string;
+      const hexMessage = stringToHex(message);
+
+      let signature: string;
+      try {
+        signature = (await window.ethereum.request({
+          method: "personal_sign",
+          params: [hexMessage, address],
+        })) as string;
+      } catch (signErr: unknown) {
+        const errObj = signErr as { code?: number; message?: string };
+        if (errObj?.code === -32602 || errObj?.message?.includes("parameter")) {
+          signature = (await window.ethereum.request({
+            method: "personal_sign",
+            params: [address, hexMessage],
+          })) as string;
+        } else {
+          throw signErr;
+        }
+      }
 
       /* Step 3 — derive Supabase credentials from signature.
          personal_sign (secp256k1) is deterministic: same wallet + same message = same sig always.
          The derived password never changes for the same wallet → same account across every device. */
       setStep("authenticating");
       const walletEmail = `${address.toLowerCase()}@wallet.tradelog.app`;
-      const walletPassword = `wlt_${signature.slice(2, 66)}`; // 64 deterministic hex chars
+      const walletPassword = `wlt_${signature.slice(2, 42)}`;
 
       /* Try sign-in first (returning user) */
-      const { error: signInErr } = await supabase.auth.signInWithPassword({
-        email: walletEmail,
-        password: walletPassword,
-      });
+      const { data: signInData, error: signInErr } =
+        await supabase.auth.signInWithPassword({
+          email: walletEmail,
+          password: walletPassword,
+        });
 
-      if (!signInErr) return; // ✅ already registered → signed in via onAuthStateChange
+      if (!signInErr && signInData?.session) {
+        toast.success("Wallet authenticated! Loading your journal…");
+        navigate({ to: "/", replace: true });
+        return;
+      }
 
       /* New user — create account */
-      if (signInErr.message.toLowerCase().includes("invalid login credentials")) {
-        const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+      const { data: signUpData, error: signUpErr } =
+        await supabase.auth.signUp({
           email: walletEmail,
           password: walletPassword,
           options: {
@@ -164,22 +193,27 @@ function AuthPage() {
           },
         });
 
-        if (signUpErr) throw signUpErr;
-
-        if (signUpData.session) {
-          /* ✅ Auto-confirmed (Supabase: Authentication → Email → 'Confirm email' must be OFF) */
-          toast.success("Wallet account created! Welcome to TradeLog Pro.");
-          navigate({ to: "/", replace: true });
-        } else {
-          /* Supabase email confirm is still ON — guide user to disable it */
-          toast.error(
-            "One-time setup required: In Supabase → Authentication → Providers → Email → uncheck 'Confirm email' → Save. Then reconnect your wallet.",
-            { duration: 14000 }
+      if (signUpErr) {
+        if (
+          signUpErr.message.includes("rate limit") ||
+          signUpErr.status === 429
+        ) {
+          throw new Error(
+            "Supabase email confirmation is still ON. Please disable 'Confirm email' in Supabase Authentication settings."
           );
-          setStep("idle");
         }
+        throw signUpErr;
+      }
+
+      if (signUpData.session) {
+        toast.success("Wallet account created! Welcome to TradeLog Pro.");
+        navigate({ to: "/", replace: true });
       } else {
-        throw signInErr;
+        toast.error(
+          "Setup required: In Supabase → Authentication → Providers → Email → uncheck 'Confirm email' → Save. Then reconnect.",
+          { duration: 15000 }
+        );
+        setStep("idle");
       }
     } catch (err: unknown) {
       const code =
