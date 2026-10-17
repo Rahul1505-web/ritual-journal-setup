@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "cross-env NODE_OPTIONS=--dns-result-order=ipv4first vite dev",
     "build": "vite build",
+    "build:vercel": "cross-env NITRO_PRESET=vercel vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
@@ -92,5 +93,8 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
     "vite": "^8.1.5"
+  },
+  "engines": {
+    "node": ">=20.x"
   }
 }
