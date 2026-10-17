@@ -2,7 +2,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { signedMoney } from "@/lib/trades";
+import { signedMoney, dualSignedMoney } from "@/lib/trades";
 
 export const chartTheme = {
   primary: "var(--primary)",
@@ -66,10 +66,11 @@ export function StatCard({
   );
 }
 
-export function PnlCell({ value }: { value: number }) {
+export function PnlCell({ value, currency = "$" }: { value: number; currency?: string }) {
+  const formatted = currency === "₹" ? dualSignedMoney(value, "₹") : signedMoney(value);
   return (
     <span className={cn("tabular font-semibold", value >= 0 ? "text-profit" : "text-loss")}>
-      {signedMoney(value)}
+      {formatted}
     </span>
   );
 }

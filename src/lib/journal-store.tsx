@@ -102,13 +102,13 @@ export function unpackTradeNotes(rawNotes: string | null | undefined): {
   const match = rawNotes.match(META_REGEX);
   if (match) {
     try {
-      const meta = JSON.parse(match[1]) as { sl?: number; tp?: number; accountId?: string };
+      const meta = JSON.parse(match[1] as string) as { sl?: number; tp?: number; accountId?: string };
       const cleaned = rawNotes.replace(META_REGEX, "").trim();
       return {
         notes: cleaned,
-        sl: typeof meta.sl === "number" && !isNaN(meta.sl) ? meta.sl : undefined,
-        tp: typeof meta.tp === "number" && !isNaN(meta.tp) ? meta.tp : undefined,
-        accountId: typeof meta.accountId === "string" ? meta.accountId : undefined,
+        ...(typeof meta.sl === "number" && !isNaN(meta.sl) ? { sl: meta.sl } : {}),
+        ...(typeof meta.tp === "number" && !isNaN(meta.tp) ? { tp: meta.tp } : {}),
+        ...(typeof meta.accountId === "string" ? { accountId: meta.accountId } : {}),
       };
     } catch {
       // fallback
@@ -119,15 +119,16 @@ export function unpackTradeNotes(rawNotes: string | null | undefined): {
 
 function toTrade(row: TradeRow, defaultAccountId?: string): Trade {
   const { notes, sl, tp, accountId } = unpackTradeNotes(row.notes);
+  const resolvedAccountId = accountId ?? defaultAccountId;
   return {
     id: row.id,
     symbol: row.symbol,
     market: row.market_type as MarketType,
     direction: row.direction as Direction,
     entry: num(row.entry_price),
-    sl,
-    tp,
-    accountId: accountId ?? defaultAccountId,
+    ...(sl !== undefined ? { sl } : {}),
+    ...(tp !== undefined ? { tp } : {}),
+    ...(resolvedAccountId !== undefined ? { accountId: resolvedAccountId } : {}),
     exit: num(row.exit_price),
     quantity: num(row.quantity),
     date: row.trade_date,
@@ -193,6 +194,10 @@ export function JournalProvider({ children }: { children: ReactNode }) {
     if (accountRows.length === 0) {
       // Seed the default primary account in Supabase
       const defaultAcc = DEFAULT_ACCOUNTS[0];
+      if (!defaultAcc) {
+        setLoading(false);
+        return;
+      }
       const { data: seededAcc } = await supabase
         .from("rules")
         .insert({
@@ -343,8 +348,8 @@ export function JournalProvider({ children }: { children: ReactNode }) {
         emotion: trade.emotion,
         mistake_tags: trade.tags,
         notes: packTradeNotes(trade.notes, {
-          sl: trade.sl,
-          tp: trade.tp,
+          ...(trade.sl !== undefined ? { sl: trade.sl } : {}),
+          ...(trade.tp !== undefined ? { tp: trade.tp } : {}),
           accountId: trade.accountId ?? accounts[0]?.id ?? "acc_main",
         }),
         chart_urls: trade.charts ?? [],

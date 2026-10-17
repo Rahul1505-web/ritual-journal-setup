@@ -16,14 +16,16 @@ import { AppLayout } from "@/components/app-layout";
 import { StatCard, chartTheme } from "@/components/journal-ui";
 import { Card } from "@/components/ui/card";
 import { useJournal } from "@/lib/journal-store";
+import { useMemo } from "react";
 import {
   byEmotion,
   byMistake,
   bySymbol,
   monthlyPnl,
-  money,
-  signedMoney,
+  dualMoney,
+  dualSignedMoney,
   stats,
+  normalizeTradesToUSD,
 } from "@/lib/trades";
 import { cn } from "@/lib/utils";
 
@@ -47,12 +49,20 @@ export const Route = createFileRoute("/_authenticated/analytics")({
 });
 
 function Analytics() {
-  const { trades } = useJournal();
-  const s = stats(trades);
-  const monthly = monthlyPnl(trades);
-  const symbols = bySymbol(trades).slice(0, 6);
-  const emotions = byEmotion(trades).filter((e) => e.trades > 0);
-  const mistakes = byMistake(trades).filter((m) => m.count > 0);
+  const { filteredTrades: trades, activeAccountId, accounts } = useJournal();
+  const currentAccount = accounts.find((a) => a.id === activeAccountId);
+  const currency = currentAccount?.currency ?? (activeAccountId === "all" ? "$" : accounts[0]?.currency ?? "$");
+  const displayTrades = useMemo(() => {
+    if (activeAccountId === "all") {
+      return normalizeTradesToUSD(trades, accounts);
+    }
+    return trades;
+  }, [trades, activeAccountId, accounts]);
+  const s = stats(displayTrades);
+  const monthly = monthlyPnl(displayTrades);
+  const symbols = bySymbol(displayTrades).slice(0, 6);
+  const emotions = byEmotion(displayTrades).filter((e) => e.trades > 0);
+  const mistakes = byMistake(displayTrades).filter((m) => m.count > 0);
   const pie = [
     { name: "Wins", value: s.wins, fill: chartTheme.profit },
     { name: "Losses", value: s.losses, fill: chartTheme.loss },
@@ -62,12 +72,12 @@ function Analytics() {
   return (
     <AppLayout title="Analytics" subtitle="Where your edge comes from — and where it leaks">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <StatCard label="Total P&L" value={money(s.total)} tone={s.total >= 0 ? "profit" : "loss"} />
+        <StatCard label="Total P&L" value={dualMoney(s.total, currency)} tone={s.total >= 0 ? "profit" : "loss"} />
         <StatCard label="Win Rate" value={`${s.winRate.toFixed(1)}%`} hint={`${s.wins}W / ${s.losses}L`} />
-        <StatCard label="Avg Win" value={money(s.avgWin)} tone="profit" />
-        <StatCard label="Avg Loss" value={money(s.avgLoss)} tone="loss" />
-        <StatCard label="Best Trade" value={money(s.best)} tone="profit" />
-        <StatCard label="Worst Trade" value={money(s.worst)} tone="loss" />
+        <StatCard label="Avg Win" value={dualMoney(s.avgWin, currency)} tone="profit" />
+        <StatCard label="Avg Loss" value={dualMoney(s.avgLoss, currency)} tone="loss" />
+        <StatCard label="Best Trade" value={dualMoney(s.best, currency)} tone="profit" />
+        <StatCard label="Worst Trade" value={dualMoney(s.worst, currency)} tone="loss" />
         <StatCard label="Risk / Reward" value={`1 : ${s.rr.toFixed(2)}`} />
         <StatCard label="Trades Logged" value={String(s.count)} />
       </div>
@@ -84,7 +94,7 @@ function Analytics() {
                 <Tooltip
                   cursor={{ fill: "color-mix(in oklab, var(--foreground) 6%, transparent)" }}
                   contentStyle={chartTheme.tooltip}
-                  formatter={(v) => signedMoney(Number(v))}
+                  formatter={(v) => dualSignedMoney(Number(v), currency)}
                 />
                 <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                   {monthly.map((m) => (
@@ -145,7 +155,7 @@ function Analytics() {
                     sym.value >= 0 ? "text-profit" : "text-loss",
                   )}
                 >
-                  {signedMoney(sym.value)}
+                  {dualSignedMoney(sym.value, currency)}
                 </span>
               </div>
             ))}
@@ -171,7 +181,7 @@ function Analytics() {
                   }}
                 >
                   <p className="truncate text-xs font-semibold">{e.emotion}</p>
-                  <p className="tabular mt-1 text-sm font-bold">{signedMoney(e.value)}</p>
+                  <p className="tabular mt-1 text-sm font-bold">{dualSignedMoney(e.value, currency)}</p>
                   <p className="text-[11px] opacity-80">
                     {e.trades} trades · {e.winRate}% win
                   </p>

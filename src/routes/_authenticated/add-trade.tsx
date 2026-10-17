@@ -25,6 +25,7 @@ import {
   MISTAKE_TAGS,
   TRADE_TYPES,
   signedMoney,
+  dualSignedMoney,
   type Direction,
   type Emotion,
   type MarketType,
@@ -60,6 +61,10 @@ function AddTrade() {
     if (activeAccountId && activeAccountId !== "all") return activeAccountId;
     return accounts[0]?.id ?? "acc_main";
   });
+
+  // Resolve the currently selected account object for currency-aware display
+  const activeAccObj = accounts.find((a) => a.id === selectedAccount) ?? accounts[0];
+  const accountCurrency = activeAccObj?.currency ?? "$";
   const [symbol, setSymbol] = useState("");
   const [market, setMarket] = useState<MarketType>("Stocks");
   const [direction, setDirection] = useState<Direction>("BUY");
@@ -133,8 +138,8 @@ function AddTrade() {
         market,
         direction,
         entry: parseFloat(entry),
-        sl: sl ? parseFloat(sl) : undefined,
-        tp: tp ? parseFloat(tp) : undefined,
+        ...(sl ? { sl: parseFloat(sl) } : {}),
+        ...(tp ? { tp: parseFloat(tp) } : {}),
         exit: parseFloat(exit),
         quantity: parseFloat(quantity),
         date: new Date(date).toISOString(),
@@ -147,7 +152,7 @@ function AddTrade() {
         rulesFollowed: followed,
         rulesBroken: rules.filter((r) => !followed.includes(r.id)).map((r) => r.id),
       });
-      toast.success(`${symbol.toUpperCase()} logged — ${signedMoney(result)}`);
+      toast.success(`${symbol.toUpperCase()} logged — ${dualSignedMoney(result, accountCurrency)}`);
       navigate({ to: "/trade-log" });
     } catch (err: unknown) {
       console.error("Save trade error:", err);
@@ -505,11 +510,12 @@ function AddTrade() {
             </p>
             <p
               className={cn(
-                "tabular text-3xl font-bold",
+                "tabular font-bold",
                 result === null ? "text-muted-foreground" : result >= 0 ? "text-profit" : "text-loss",
+                accountCurrency === "₹" ? "text-xl sm:text-2xl" : "text-3xl",
               )}
             >
-              {result === null ? "—" : signedMoney(result)}
+              {result === null ? "—" : dualSignedMoney(result, accountCurrency)}
             </p>
             <p className="text-xs text-muted-foreground">
               (Exit − Entry) × Quantity{direction === "SELL" ? ", inverted for short" : ""}

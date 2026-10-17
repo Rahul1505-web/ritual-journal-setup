@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useJournal } from "@/lib/journal-store";
-import { MARKETS, TRADE_TYPES, formatDate, pnl, signedMoney } from "@/lib/trades";
+import { MARKETS, TRADE_TYPES, formatDate, pnl, signedMoney, dualSignedMoney, toUSD } from "@/lib/trades";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/trade-log/")({
@@ -44,6 +44,12 @@ function TradeLog() {
   const { trades, accounts, activeAccountId } = useJournal();
   const navigate = useNavigate();
   const [selectedAccount, setSelectedAccount] = useState<string>(activeAccountId);
+
+  // Currency for the currently active account filter
+  const activeCurrency = (() => {
+    if (selectedAccount === "all") return "$";
+    return accounts.find((a) => a.id === selectedAccount)?.currency ?? "$";
+  })();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [market, setMarket] = useState("all");
@@ -79,9 +85,16 @@ function TradeLog() {
       if (sort === "symbol") return a.symbol.localeCompare(b.symbol) * dir;
       return (+new Date(a.date) - +new Date(b.date)) * dir;
     });
-  }, [trades, from, to, market, direction, tradeType, outcome, sort, asc]);
+  }, [trades, selectedAccount, accounts, from, to, market, direction, tradeType, outcome, sort, asc]);
 
-  const totalPnl = rows.reduce((acc, t) => acc + pnl(t), 0);
+  const totalPnl = rows.reduce((acc, t) => {
+    const tradePnl = pnl(t);
+    if (selectedAccount === "all") {
+      const acc = accounts.find((a) => a.id === t.accountId) ?? accounts[0];
+      return acc + toUSD(tradePnl, acc?.currency ?? "$");
+    }
+    return acc + tradePnl;
+  }, 0);
 
   const reset = () => {
     setFrom("");
@@ -112,7 +125,7 @@ function TradeLog() {
   );
 
   return (
-    <AppLayout title="Trade Log" subtitle={`${rows.length} trades · ${signedMoney(totalPnl)} net`}>
+    <AppLayout title="Trade Log" subtitle={`${rows.length} trades · ${dualSignedMoney(totalPnl, activeCurrency)} net`}>
       <Card className="gap-6 p-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-semibold">
@@ -238,7 +251,10 @@ function TradeLog() {
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{t.emotion}</td>
                   <td className="px-4 py-3 text-right">
-                    <PnlCell value={pnl(t)} />
+                    <PnlCell value={pnl(t)} currency={(() => {
+                      const acc = accounts.find((a) => a.id === t.accountId) ?? accounts[0];
+                      return acc?.currency ?? "$";
+                    })()} />
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground sm:pr-5">
                     {formatDate(t.date)}

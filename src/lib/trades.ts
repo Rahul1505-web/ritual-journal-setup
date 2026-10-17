@@ -91,6 +91,9 @@ export const BROKERS = [
 
 export const CURRENCIES = ["$", "₹", "€", "£", "A$", "C$"];
 
+/** Fixed INR per USD rate used throughout the app */
+export const INR_PER_USD = 85;
+
 export const formatCurrency = (n: number, currency = "$") =>
   `${n < 0 ? "-" : ""}${currency}${Math.abs(n).toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -99,6 +102,61 @@ export const formatCurrency = (n: number, currency = "$") =>
 
 export const signedCurrency = (n: number, currency = "$") =>
   `${n > 0 ? "+" : ""}${formatCurrency(n, currency)}`;
+
+/**
+ * For INR accounts, returns "₹X / $Y" showing both INR and USDT.
+ * For other currencies, falls back to the normal formatCurrency.
+ */
+export const dualMoney = (n: number, currency = "$"): string => {
+  if (currency === "₹") {
+    const inr = formatCurrency(n, "₹");
+    const usd = formatCurrency(n / INR_PER_USD, "$");
+    return `${inr} / ${usd}`;
+  }
+  return formatCurrency(n, currency);
+};
+
+export const dualSignedMoney = (n: number, currency = "$"): string => {
+  const sign = n > 0 ? "+" : "";
+  if (currency === "₹") {
+    const inr = formatCurrency(n, "₹");
+    const usd = formatCurrency(n / INR_PER_USD, "$");
+    return `${sign}${inr} / ${sign}${usd}`;
+  }
+  return `${sign}${formatCurrency(n, currency)}`;
+};
+
+/**
+ * Converts an amount from a specified account currency to USD.
+ * For INR (₹), converts using the fixed INR_PER_USD (85).
+ */
+export const toUSD = (n: number, currency = "$"): number => {
+  if (currency === "₹") {
+    return n / INR_PER_USD;
+  }
+  return n;
+};
+
+/**
+ * Normalizes a list of trades into USD by converting INR trade values.
+ */
+export const normalizeTradesToUSD = (trades: Trade[], accounts: TradingAccount[]): Trade[] => {
+  const defaultAccId = accounts[0]?.id;
+  const accMap = new Map(accounts.map((a) => [a.id, a]));
+  return trades.map((t) => {
+    const acc = accMap.get(t.accountId ?? defaultAccId ?? "");
+    if (acc && acc.currency === "₹") {
+      return {
+        ...t,
+        entry: t.entry / INR_PER_USD,
+        exit: t.exit / INR_PER_USD,
+        sl: t.sl != null ? t.sl / INR_PER_USD : undefined,
+        tp: t.tp != null ? t.tp / INR_PER_USD : undefined,
+      };
+    }
+    return t;
+  });
+};
 
 export interface Rule {
   id: string;

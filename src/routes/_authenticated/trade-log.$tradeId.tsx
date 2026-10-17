@@ -91,10 +91,10 @@ function TradeDetail() {
           <Detail label="Trading Account" value={tradeAccount ? `${tradeAccount.name} (${tradeAccount.broker})` : "Main Account"} />
           <Detail label="Market" value={trade.market} />
           <Detail label="Trade type" value={trade.tradeType} />
-          <Detail label="Entry" value={money(trade.entry)} />
-          {trade.sl != null ? <Detail label="Stop Loss (SL)" value={money(trade.sl)} /> : null}
-          {trade.tp != null ? <Detail label="Take Profit (TP)" value={money(trade.tp)} /> : null}
-          <Detail label="Exit" value={money(trade.exit)} />
+          <Detail label="Entry" value={trade.entry.toLocaleString()} />
+          {trade.sl != null ? <Detail label="Stop Loss (SL)" value={trade.sl.toLocaleString()} /> : null}
+          {trade.tp != null ? <Detail label="Take Profit (TP)" value={trade.tp.toLocaleString()} /> : null}
+          <Detail label="Exit" value={trade.exit.toLocaleString()} />
           {trade.sl != null ? (
             <Detail
               label="Realized R:R (Exit / SL)"
@@ -123,7 +123,7 @@ function TradeDetail() {
           <Detail label="Date" value={formatDate(trade.date)} />
           <div>
             <p className="text-xs text-muted-foreground">P&L</p>
-            <PnlCell value={pnl(trade)} />
+            <PnlCell value={pnl(trade)} currency={tradeAccount?.currency ?? "$"} />
           </div>
         </div>
         {trade.tags.length > 0 ? (

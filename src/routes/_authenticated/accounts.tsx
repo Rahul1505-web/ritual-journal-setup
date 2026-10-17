@@ -2,20 +2,16 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowDownRight,
   ArrowUpRight,
-  Briefcase,
   CheckCircle2,
   ChevronRight,
   Crown,
   Eye,
   Layers,
-  MoreVertical,
   Percent,
   Plus,
   ShieldAlert,
-  Sparkles,
   Target,
   Trash2,
-  TrendingUp,
   WalletCards,
   Edit2,
 } from "lucide-react";
@@ -51,6 +47,9 @@ import {
   BROKERS,
   CURRENCIES,
   formatCurrency,
+  dualMoney,
+  dualSignedMoney,
+  toUSD,
   pnl,
   signedCurrency,
   type AccountStatus,
@@ -134,7 +133,7 @@ function AccountsPage() {
     setCurrency("$");
     setTargetProfitPercent("");
     setMaxDrawdownPercent("");
-    setColor(COLOR_PRESETS[accounts.length % COLOR_PRESETS.length]);
+    setColor(COLOR_PRESETS[accounts.length % COLOR_PRESETS.length] ?? "#598bff");
     setStatus("active");
     setDescription("");
     setDialogOpen(true);
@@ -186,8 +185,8 @@ function AccountsPage() {
           broker: finalBroker,
           initialBalance: balanceNum,
           currency,
-          targetProfitPercent: targetNum,
-          maxDrawdownPercent: drawdownNum,
+          ...(targetNum !== undefined ? { targetProfitPercent: targetNum } : {}),
+          ...(drawdownNum !== undefined ? { maxDrawdownPercent: drawdownNum } : {}),
           color,
           status,
           description: description.trim(),
@@ -200,8 +199,8 @@ function AccountsPage() {
           broker: finalBroker,
           initialBalance: balanceNum,
           currency,
-          targetProfitPercent: targetNum,
-          maxDrawdownPercent: drawdownNum,
+          ...(targetNum !== undefined ? { targetProfitPercent: targetNum } : {}),
+          ...(drawdownNum !== undefined ? { maxDrawdownPercent: drawdownNum } : {}),
           color,
           status,
           description: description.trim(),
@@ -270,12 +269,20 @@ function AccountsPage() {
         targetProgress = Math.min(100, Math.max(0, (totalPnl / targetDollars) * 100));
       }
 
+      // USD converted values for portfolio-wide aggregation
+      const initialBalanceUSD = toUSD(acc.initialBalance, acc.currency);
+      const totalPnlUSD = toUSD(totalPnl, acc.currency);
+      const currentBalanceUSD = initialBalanceUSD + totalPnlUSD;
+
       return {
         account: acc,
         tradesCount: accTrades.length,
         winsCount: wins.length,
         lossesCount: losses.length,
         totalPnl,
+        totalPnlUSD,
+        initialBalanceUSD,
+        currentBalanceUSD,
         currentBalance,
         roiPercent,
         winRate,
@@ -288,26 +295,26 @@ function AccountsPage() {
 
   // Executive Combined Portfolio Summary
   const portfolioSummary = useMemo(() => {
-    const totalInitialFunds = accountMetrics.reduce((s, m) => s + m.account.initialBalance, 0);
-    const totalCombinedPnl = accountMetrics.reduce((s, m) => s + m.totalPnl, 0);
+    const totalInitialFunds = accountMetrics.reduce((s, m) => s + m.initialBalanceUSD, 0);
+    const totalCombinedPnl = accountMetrics.reduce((s, m) => s + m.totalPnlUSD, 0);
     const totalNetWorth = totalInitialFunds + totalCombinedPnl;
     const totalTrades = accountMetrics.reduce((s, m) => s + m.tradesCount, 0);
     const totalWins = accountMetrics.reduce((s, m) => s + m.winsCount, 0);
     const overallWinRate = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 0;
     const overallRoi = totalInitialFunds > 0 ? (totalCombinedPnl / totalInitialFunds) * 100 : 0;
 
-    // MVP / Most Profitable Account
-    const sortedByProfit = [...accountMetrics].sort((a, b) => b.totalPnl - a.totalPnl);
+    // MVP / Most Profitable Account (compare normalized USD PnL so ₹ doesn't distort ranking)
+    const sortedByProfit = [...accountMetrics].sort((a, b) => b.totalPnlUSD - a.totalPnlUSD);
     const topPerformer = sortedByProfit[0];
 
     // Total positive profits for share calculation
     const totalPositiveProfit = accountMetrics
-      .filter((m) => m.totalPnl > 0)
-      .reduce((s, m) => s + m.totalPnl, 0);
+      .filter((m) => m.totalPnlUSD > 0)
+      .reduce((s, m) => s + m.totalPnlUSD, 0);
 
     const topPerformerShare =
-      topPerformer && topPerformer.totalPnl > 0 && totalPositiveProfit > 0
-        ? (topPerformer.totalPnl / totalPositiveProfit) * 100
+      topPerformer && topPerformer.totalPnlUSD > 0 && totalPositiveProfit > 0
+        ? (topPerformer.totalPnlUSD / totalPositiveProfit) * 100
         : 0;
 
     // Highest Win Rate Account (min 1 trade)
@@ -482,7 +489,7 @@ function AccountsPage() {
                           portfolioSummary.topPerformer.totalPnl >= 0 ? "text-profit" : "text-loss",
                         )}
                       >
-                        {signedCurrency(
+                        {dualSignedMoney(
                           portfolioSummary.topPerformer.totalPnl,
                           portfolioSummary.topPerformer.account.currency,
                         )}
@@ -539,7 +546,7 @@ function AccountsPage() {
                 {accountMetrics.map((m) => {
                   const sharePct =
                     portfolioSummary.totalInitialFunds > 0
-                      ? (m.account.initialBalance / portfolioSummary.totalInitialFunds) * 100
+                      ? (m.initialBalanceUSD / portfolioSummary.totalInitialFunds) * 100
                       : 0;
                   return (
                     <div key={m.account.id} className="space-y-1">
@@ -685,13 +692,13 @@ function AccountsPage() {
                       <div className="flex items-baseline justify-between">
                         <span className="text-xs text-muted-foreground">Current Equity</span>
                         <span className="tabular text-xl font-bold text-foreground">
-                          {formatCurrency(m.currentBalance, acc.currency)}
+                          {dualMoney(m.currentBalance, acc.currency)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground">Starting Capital</span>
                         <span className="tabular font-medium text-foreground">
-                          {formatCurrency(acc.initialBalance, acc.currency)}
+                          {dualMoney(acc.initialBalance, acc.currency)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-xs pt-1 border-t border-border/50">
@@ -703,7 +710,7 @@ function AccountsPage() {
                               m.totalPnl >= 0 ? "text-profit" : "text-loss",
                             )}
                           >
-                            {signedCurrency(m.totalPnl, acc.currency)}
+                            {dualSignedMoney(m.totalPnl, acc.currency)}
                           </span>
                           <span
                             className={cn(

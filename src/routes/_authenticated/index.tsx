@@ -16,7 +16,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useJournal } from "@/lib/journal-store";
-import { equityCurve, formatDate, money, pnl, sortByDate, stats } from "@/lib/trades";
+import { useMemo } from "react";
+import {
+  equityCurve,
+  formatDate,
+  money,
+  dualMoney,
+  pnl,
+  sortByDate,
+  stats,
+  toUSD,
+  normalizeTradesToUSD,
+} from "@/lib/trades";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -40,13 +51,19 @@ export const Route = createFileRoute("/_authenticated/")({
 function Dashboard() {
   const { filteredTrades, activeAccountId, accounts } = useJournal();
   const currentAccount = accounts.find((a) => a.id === activeAccountId);
-  const activeTrades = filteredTrades;
+  const currency = currentAccount?.currency ?? (activeAccountId === "all" ? "$" : accounts[0]?.currency ?? "$");
+  const activeTrades = useMemo(() => {
+    if (activeAccountId === "all") {
+      return normalizeTradesToUSD(filteredTrades, accounts);
+    }
+    return filteredTrades;
+  }, [filteredTrades, activeAccountId, accounts]);
   const s = stats(activeTrades);
   const startingEquity = currentAccount
     ? currentAccount.initialBalance
-    : accounts.reduce((sum, a) => sum + a.initialBalance, 0);
+    : accounts.reduce((sum, a) => sum + toUSD(a.initialBalance, a.currency), 0);
   const curve = equityCurve(activeTrades, startingEquity || 25000);
-  const recent = sortByDate(activeTrades).reverse().slice(0, 10);
+  const recent = sortByDate(filteredTrades).reverse().slice(0, 10);
 
   return (
     <AppLayout
@@ -68,7 +85,7 @@ function Dashboard() {
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard
           label="Total P&L"
-          value={money(s.total)}
+          value={dualMoney(s.total, currency)}
           tone={s.total >= 0 ? "profit" : "loss"}
           icon={s.total >= 0 ? ArrowUpRight : ArrowDownRight}
         />
@@ -89,7 +106,7 @@ function Dashboard() {
             <p className="text-xs text-muted-foreground">Portfolio growth over time</p>
           </div>
           <Badge variant="outline" className="shrink-0 tabular">
-            {money(curve.at(-1)?.equity ?? 0)}
+            {dualMoney(curve.at(-1)?.equity ?? 0, currency)}
           </Badge>
         </div>
         <div className="h-[260px] w-full">
@@ -104,7 +121,7 @@ function Dashboard() {
               <CartesianGrid stroke={chartTheme.grid} vertical={false} />
               <XAxis dataKey="date" tick={chartTheme.tick} tickLine={false} axisLine={false} minTickGap={24} />
               <YAxis tick={chartTheme.tick} tickLine={false} axisLine={false} width={64} />
-              <Tooltip contentStyle={chartTheme.tooltip} formatter={(v) => money(Number(v))} />
+              <Tooltip contentStyle={chartTheme.tooltip} formatter={(v) => dualMoney(Number(v), currency)} />
               <Area
                 type="monotone"
                 dataKey="equity"
@@ -154,7 +171,13 @@ function Dashboard() {
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <PnlCell value={pnl(t)} />
+                    <PnlCell
+                      value={pnl(t)}
+                      currency={(() => {
+                        const acc = accounts.find((a) => a.id === t.accountId) ?? accounts[0];
+                        return acc?.currency ?? currency;
+                      })()}
+                    />
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground sm:px-5">
                     {formatDate(t.date)}
