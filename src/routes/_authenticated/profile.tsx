@@ -39,14 +39,18 @@ export const Route = createFileRoute("/_authenticated/profile")({
 function Profile() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [email, setEmail] = useState<string>("");
+  const [walletAddress, setWalletAddress] = useState<string>("");
+  const [walletType, setWalletType] = useState<string>("");
   const [name, setName] = useState<string>("");
   const [isGuest, setIsGuest] = useState<boolean>(false);
 
   useEffect(() => {
     void getEffectiveUser().then((user) => {
       if (user) {
-        setEmail(user.email ?? "");
+        // Wallet auth stores address in user_metadata
+        const addr: string = user.user_metadata?.wallet_address ?? "";
+        setWalletAddress(addr);
+        setWalletType(user.user_metadata?.wallet_type ?? "Wallet");
         setName(user.user_metadata?.full_name ?? user.user_metadata?.name ?? "");
         setIsGuest(!!user.isGuest);
       }
@@ -79,16 +83,19 @@ function Profile() {
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Account email</Label>
+              <Label>Connected wallet</Label>
               <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${isGuest ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20' : 'bg-primary/10 text-primary border border-primary/20'}`}>
-                {isGuest ? '⚡ Instant Local Workspace' : '☁️ Cloud Synced'}
+                {isGuest ? '⚡ Local Workspace' : '☁️ Cloud Synced'}
               </span>
             </div>
-            <div className="rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm">
-              {email ? (
-                <span className="break-all">{email}</span>
+            <div className="rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm flex items-center gap-2">
+              {walletAddress ? (
+                <>
+                  <span className="text-[11px] text-muted-foreground font-medium">{walletType}</span>
+                  <span className="font-mono text-xs break-all text-foreground">{walletAddress}</span>
+                </>
               ) : (
-                <span className="text-muted-foreground">No email linked</span>
+                <span className="text-muted-foreground">No wallet linked</span>
               )}
             </div>
           </div>
@@ -123,8 +130,8 @@ function Profile() {
         <Card className="gap-6 p-6">
           <h2 className="text-lg font-semibold">Account</h2>
           <p className="text-sm text-muted-foreground">
-            Sign out to switch accounts. Your data is saved and will be here when you sign back in
-            with the same email.
+            Disconnect your wallet to switch accounts. Your data is saved in the cloud —
+            reconnect with the same wallet on any device to access it instantly.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
             <Button

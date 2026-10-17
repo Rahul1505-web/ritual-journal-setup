@@ -1,443 +1,474 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
-  AlertTriangle,
   CandlestickChart,
-  Eye,
-  EyeOff,
+  Wallet,
   Loader2,
-  Lock,
-  Mail,
-  MailCheck,
-  RefreshCw,
+  ExternalLink,
+  ShieldCheck,
+  Globe,
+  Copy,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
+/* ─── Ethereum provider types ────────────────────────────────────────────── */
+declare global {
+  interface Window {
+    ethereum?: EthereumProvider;
+  }
+}
+
+interface EthereumProvider {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  on: (event: string, handler: (...args: unknown[]) => void) => void;
+  removeListener: (event: string, handler: (...args: unknown[]) => void) => void;
+  isMetaMask?: boolean;
+  isBraveWallet?: boolean;
+  isCoinbaseWallet?: boolean;
+}
+
+/* ─── Route ──────────────────────────────────────────────────────────────── */
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Sign in — TradeLog Pro" },
+      { title: "Connect Wallet — TradeLog Pro" },
       {
         name: "description",
         content:
-          "Sign in to TradeLog Pro to log trades, track P&L and review your trading psychology across all devices.",
+          "Sign in to TradeLog Pro with your crypto wallet. No email, no password — just your wallet signature.",
       },
-      { property: "og:title", content: "Sign in — TradeLog Pro" },
-      {
-        property: "og:description",
-        content: "Access your cloud-synced trading journal, analytics and AI coach.",
-      },
+      { property: "og:title", content: "Connect Wallet — TradeLog Pro" },
     ],
   }),
   component: AuthPage,
 });
 
-type Mode = "signin" | "signup";
+/* ─── Helpers ────────────────────────────────────────────────────────────── */
+type Step = "idle" | "connecting" | "signing" | "authenticating";
 
+function getWalletLabel(eth: EthereumProvider): string {
+  if (eth.isBraveWallet) return "Brave Wallet";
+  if (eth.isCoinbaseWallet) return "Coinbase Wallet";
+  if (eth.isMetaMask) return "MetaMask";
+  return "Web3 Wallet";
+}
+
+function shortAddr(address: string): string {
+  return `${address.slice(0, 6)}···${address.slice(-4)}`;
+}
+
+/**
+ * personal_sign is deterministic for secp256k1:
+ * same private key + same message = same signature every time.
+ * This means the same wallet always produces the same Supabase credentials.
+ */
+function buildSignMessage(address: string): string {
+  return (
+    `TradeLog Pro — Wallet Sign-In\n\n` +
+    `Sign this message to authenticate securely.\n` +
+    `No transaction will be made and no gas is charged.\n\n` +
+    `Wallet: ${address.toLowerCase()}\n\n` +
+    `Your signature syncs your trading journal across every device.`
+  );
+}
+
+/* ─── Component ──────────────────────────────────────────────────────────── */
 function AuthPage() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<Mode>("signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [awaitingConfirmationEmail, setAwaitingConfirmationEmail] = useState<string | null>(null);
-  const [signInError, setSignInError] = useState<string | null>(null);
+  const [step, setStep] = useState<Step>("idle");
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
+  const [walletLabel, setWalletLabel] = useState<string>("Wallet");
+  const [copied, setCopied] = useState(false);
+  const [hasWallet, setHasWallet] = useState<boolean | null>(null);
 
+  /* Detect wallet + redirect if already signed in */
   useEffect(() => {
+    setHasWallet(typeof window !== "undefined" && !!window.ethereum);
+
     void supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        navigate({ to: "/", replace: true });
-      }
+      if (data.session) navigate({ to: "/", replace: true });
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN" && session) {
-        toast.success("Signed in successfully! Loading your cloud data...");
+        toast.success("Wallet authenticated! Loading your journal…");
         navigate({ to: "/", replace: true });
       }
     });
-
     return () => sub.subscription.unsubscribe();
   }, [navigate]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSignInError(null);
+  const copyAddress = async () => {
+    if (!connectedAddress) return;
+    await navigator.clipboard.writeText(connectedAddress);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
-    if (!email || !password) {
-      toast.error("Please enter your email and password.");
+  /* ── Main auth flow ───────────────────────────────────────────────────── */
+  const handleConnect = async () => {
+    if (!window.ethereum) {
+      toast.error("No wallet found. Please install MetaMask and refresh.");
       return;
     }
 
-    setBusy(true);
     try {
-      if (mode === "signup") {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          ...(typeof window !== "undefined"
-            ? { options: { emailRedirectTo: `${window.location.origin}/` } }
-            : {}),
+      /* Step 1 — request accounts */
+      setStep("connecting");
+      const accounts = (await window.ethereum.request({
+        method: "eth_requestAccounts",
+      })) as string[];
+
+      const address = accounts[0];
+      if (!address) throw new Error("No account returned from wallet.");
+      setConnectedAddress(address);
+      setWalletLabel(getWalletLabel(window.ethereum));
+
+      /* Step 2 — sign deterministic message (no gas, no transaction) */
+      setStep("signing");
+      const message = buildSignMessage(address);
+      const signature = (await window.ethereum.request({
+        method: "personal_sign",
+        params: [message, address],
+      })) as string;
+
+      /* Step 3 — derive Supabase credentials from signature.
+         personal_sign (secp256k1) is deterministic: same wallet + same message = same sig always.
+         The derived password never changes for the same wallet → same account across every device. */
+      setStep("authenticating");
+      const walletEmail = `${address.toLowerCase()}@wallet.tradelog.app`;
+      const walletPassword = `wlt_${signature.slice(2, 66)}`; // 64 deterministic hex chars
+
+      /* Try sign-in first (returning user) */
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email: walletEmail,
+        password: walletPassword,
+      });
+
+      if (!signInErr) return; // ✅ already registered → signed in via onAuthStateChange
+
+      /* New user — create account */
+      if (signInErr.message.toLowerCase().includes("invalid login credentials")) {
+        const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+          email: walletEmail,
+          password: walletPassword,
+          options: {
+            data: {
+              wallet_address: address.toLowerCase(),
+              wallet_type: walletLabel,
+            },
+          },
         });
 
-        if (error) throw error;
+        if (signUpErr) throw signUpErr;
 
-        if (data.session) {
-          toast.success("Account created and confirmed! Welcome to TradeLog Pro.");
+        if (signUpData.session) {
+          /* ✅ Auto-confirmed (Supabase: Authentication → Email → 'Confirm email' must be OFF) */
+          toast.success("Wallet account created! Welcome to TradeLog Pro.");
           navigate({ to: "/", replace: true });
         } else {
-          // Cloud confirmation email required
-          setAwaitingConfirmationEmail(email);
-          toast.success("Account created! Confirmation email dispatched to your inbox.");
+          /* Supabase email confirm is still ON — guide user to disable it */
+          toast.error(
+            "One-time setup required: In Supabase → Authentication → Providers → Email → uncheck 'Confirm email' → Save. Then reconnect your wallet.",
+            { duration: 14000 }
+          );
+          setStep("idle");
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) {
-          setSignInError(error.message);
-          throw error;
-        }
+        throw signInErr;
       }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Authentication failed.");
-    } finally {
-      setBusy(false);
+    } catch (err: unknown) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? (err as { code: number }).code
+          : null;
+
+      if (code === 4001) {
+        toast.error("Signature declined. Please approve the sign request in your wallet.");
+      } else if (code === -32002) {
+        toast.error("MetaMask is waiting — open the MetaMask extension and click 'Sign'.");
+      } else {
+        toast.error(err instanceof Error ? err.message : "Wallet authentication failed.");
+      }
+      setStep("idle");
     }
   };
 
-  const handleResend = async (targetEmail?: string) => {
-    const target = targetEmail || email;
-    if (!target) {
-      toast.error("Please enter your email address.");
-      return;
-    }
-
-    setBusy(true);
-    try {
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email: target,
-        ...(typeof window !== "undefined"
-          ? { options: { emailRedirectTo: `${window.location.origin}/` } }
-          : {}),
-      });
-
-      if (error) throw error;
-      toast.success(`Confirmation email resent to ${target}. Please check your Inbox and Spam folder!`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to resend confirmation email.");
-    } finally {
-      setBusy(false);
-    }
+  /* ── Render ──────────────────────────────────────────────────────────── */
+  const stepLabels: Record<Step, string> = {
+    idle: "",
+    connecting: "Connecting to wallet…",
+    signing: "Check your wallet popup — waiting for signature…",
+    authenticating: "Verifying with cloud…",
   };
 
   return (
     <div
-      className="flex min-h-screen items-center justify-center px-4 py-10"
-      style={{ backgroundColor: "#0a0d1a" }}
+      className="flex min-h-screen items-center justify-center px-4 py-12"
+      style={{ backgroundColor: "#080b18" }}
     >
+      {/* Background glow */}
       <div
-        className="w-full max-w-[440px]"
         style={{
-          backgroundColor: "#111827",
-          borderRadius: "16px",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
-          boxShadow: "0 24px 64px rgba(0, 0, 0, 0.45)",
-          padding: "40px",
+          position: "fixed",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse 60% 40% at 50% 0%, rgba(89,139,255,0.12) 0%, transparent 70%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div
+        className="relative w-full max-w-[420px]"
+        style={{
+          backgroundColor: "rgba(17,24,39,0.97)",
+          borderRadius: "22px",
+          border: "1px solid rgba(255,255,255,0.07)",
+          boxShadow:
+            "0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(89,139,255,0.06) inset",
+          padding: "40px 36px",
+          backdropFilter: "blur(20px)",
         }}
       >
-        <div className="flex flex-col items-center text-center">
-          {/* Logo */}
+        {/* Logo + header */}
+        <div className="flex flex-col items-center text-center mb-8">
           <div
-            className="grid place-items-center"
             style={{
-              width: "60px",
-              height: "60px",
-              borderRadius: "16px",
-              backgroundColor: "rgba(89, 139, 255, 0.12)",
+              width: "66px",
+              height: "66px",
+              borderRadius: "18px",
+              background:
+                "linear-gradient(135deg, rgba(89,139,255,0.22) 0%, rgba(89,139,255,0.06) 100%)",
+              border: "1px solid rgba(89,139,255,0.28)",
+              display: "grid",
+              placeItems: "center",
               color: "#598bff",
-              marginBottom: "20px",
+              marginBottom: "18px",
             }}
           >
             <CandlestickChart className="size-8" />
           </div>
 
           <h1
-            className="font-bold tracking-tight"
             style={{
               color: "#ffffff",
-              fontSize: "26px",
+              fontSize: "24px",
+              fontWeight: 700,
+              letterSpacing: "-0.5px",
               lineHeight: 1.2,
               marginBottom: "8px",
             }}
           >
             TradeLog Pro
           </h1>
-
-          <p
-            style={{
-              color: "#9ca3af",
-              fontSize: "14px",
-              lineHeight: 1.5,
-              marginBottom: "28px",
-            }}
-          >
-            Cloud-synced trading journal across all your devices
+          <p style={{ color: "#6b7280", fontSize: "13px", lineHeight: 1.5 }}>
+            Connect your wallet to access your cloud-synced journal
           </p>
         </div>
 
-        {/* State: Awaiting confirmation email screen */}
-        {awaitingConfirmationEmail ? (
-          <div className="flex flex-col items-center text-center">
-            <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <MailCheck className="size-7" />
-            </div>
+        {/* Divider */}
+        <div
+          style={{
+            height: "1px",
+            background:
+              "linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)",
+            marginBottom: "24px",
+          }}
+        />
 
-            <h2 className="text-xl font-bold text-white mb-2">Check your email</h2>
-
-            <p className="text-sm text-gray-300 mb-4">
-              We have sent a confirmation email to{" "}
-              <strong className="text-white block mt-0.5 break-all">
-                {awaitingConfirmationEmail}
-              </strong>
+        {/* No wallet detected */}
+        {hasWallet === false && (
+          <div
+            className="rounded-xl p-4 mb-5 text-center"
+            style={{
+              background: "rgba(251,191,36,0.06)",
+              border: "1px solid rgba(251,191,36,0.2)",
+            }}
+          >
+            <AlertTriangle className="size-5 text-amber-400 mx-auto mb-2" />
+            <p className="text-amber-200 text-sm font-semibold mb-1">
+              No wallet detected
             </p>
-
-            <div className="w-full rounded-xl border border-amber-500/25 bg-amber-500/10 p-3.5 text-xs text-amber-200 text-left mb-5">
-              <div className="font-semibold text-amber-300 mb-1 flex items-center gap-1.5">
-                <AlertTriangle className="size-3.5 text-amber-400" />
-                <span>Can't find the email in your primary inbox?</span>
-              </div>
-              <ul className="list-disc pl-4 space-y-1 text-amber-200/90 text-[11px] leading-relaxed">
-                <li>
-                  Check your <strong>Spam / Junk</strong> folder (emails from <code>noreply@mail.app.supabase.io</code> are often sorted to Spam).
-                </li>
-                <li>Check your <strong>Promotions</strong> or <strong>Updates</strong> tab in Gmail.</li>
-                <li>Click the confirmation link in the email to activate your account. You can then sign in from any device.</li>
-              </ul>
-            </div>
-
-            <div className="w-full flex flex-col gap-2">
-              <Button
-                type="button"
-                onClick={() => void handleResend(awaitingConfirmationEmail)}
-                disabled={busy}
-                className="w-full bg-[#598bff] hover:bg-[#4a7ae8] text-white font-medium h-11"
-              >
-                {busy ? <Loader2 className="size-4 animate-spin" /> : "Resend confirmation email"}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setAwaitingConfirmationEmail(null);
-                  setMode("signin");
-                }}
-                className="text-gray-400 hover:text-white text-xs h-9"
-              >
-                Back to Sign In
-              </Button>
-            </div>
+            <p className="text-amber-200/60 text-xs mb-3">
+              Install MetaMask to use wallet sign-in.
+            </p>
+            <a
+              href="https://metamask.io/download"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-amber-300 hover:text-amber-200 transition-colors font-medium"
+            >
+              Install MetaMask <ExternalLink className="size-3" />
+            </a>
           </div>
-        ) : (
-          <>
-            {/* Tab switcher */}
-            <div
-              className="flex mb-5"
-              style={{
-                backgroundColor: "#1f2937",
-                borderRadius: "10px",
-                padding: "4px",
-              }}
-            >
-              {(["signin", "signup"] as Mode[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => {
-                    setMode(m);
-                    setSignInError(null);
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: "8px 0",
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    fontWeight: 500,
-                    border: "none",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                    backgroundColor: mode === m ? "#598bff" : "transparent",
-                    color: mode === m ? "#ffffff" : "#9ca3af",
-                  }}
-                >
-                  {m === "signin" ? "Sign In" : "Sign Up"}
-                </button>
-              ))}
-            </div>
+        )}
 
-            {/* Error helper notice */}
-            {signInError && (
+        {/* Connected address pill */}
+        {connectedAddress && (
+          <div
+            className="rounded-xl p-3 mb-4 flex items-center justify-between gap-3"
+            style={{
+              background: "rgba(89,139,255,0.07)",
+              border: "1px solid rgba(89,139,255,0.2)",
+            }}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
               <div
-                className="mb-4 rounded-xl border border-red-500/25 bg-red-500/10 p-3.5 text-xs text-red-200 text-left"
-                style={{ lineHeight: 1.5 }}
-              >
-                <div className="font-semibold text-red-300 mb-1 flex items-center gap-1.5">
-                  <AlertTriangle className="size-3.5 text-red-400" />
-                  <span>Invalid credentials or email not confirmed</span>
-                </div>
-                <p className="text-red-200/80 mb-2.5 text-[11px]">
-                  If you just created your account, please confirm your email first. Be sure to check your <strong>Spam / Junk</strong> folder in Gmail for the link from <code>noreply@mail.app.supabase.io</code>.
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void handleResend(email)}
-                  disabled={busy}
-                  className="border-red-500/30 bg-red-500/15 hover:bg-red-500/25 text-red-200 text-xs h-7 px-2.5 gap-1.5"
-                >
-                  <RefreshCw className="size-3" />
-                  Resend confirmation email
-                </Button>
-              </div>
-            )}
-
-            {/* Form */}
-            <form
-              onSubmit={(e) => void handleSubmit(e)}
-              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
-            >
-              {/* Email */}
-              <div style={{ position: "relative" }}>
-                <Mail
-                  className="size-4"
-                  style={{
-                    position: "absolute",
-                    left: "14px",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "#6b7280",
-                    pointerEvents: "none",
-                  }}
-                />
-                <input
-                  type="email"
-                  placeholder="Email address"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  style={{
-                    width: "100%",
-                    height: "48px",
-                    paddingLeft: "40px",
-                    paddingRight: "16px",
-                    backgroundColor: "#1f2937",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: "10px",
-                    color: "#f9fafb",
-                    fontSize: "14px",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-
-              {/* Password */}
-              <div style={{ position: "relative" }}>
-                <Lock
-                  className="size-4"
-                  style={{
-                    position: "absolute",
-                    left: "14px",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "#6b7280",
-                    pointerEvents: "none",
-                  }}
-                />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  style={{
-                    width: "100%",
-                    height: "48px",
-                    paddingLeft: "40px",
-                    paddingRight: "44px",
-                    backgroundColor: "#1f2937",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: "10px",
-                    color: "#f9fafb",
-                    fontSize: "14px",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  style={{
-                    position: "absolute",
-                    right: "14px",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "#6b7280",
-                    padding: 0,
-                  }}
-                >
-                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </button>
-              </div>
-
-              <Button
-                type="submit"
-                disabled={busy}
-                className="w-full justify-center font-medium mt-2"
-                style={{
-                  height: "50px",
-                  borderRadius: "10px",
-                  fontSize: "15px",
-                  backgroundColor: "#598bff",
-                  color: "#ffffff",
-                  border: "none",
-                }}
-              >
-                {busy ? (
-                  <Loader2 className="size-5 animate-spin" />
-                ) : mode === "signin" ? (
-                  "Sign In with Email"
-                ) : (
-                  "Create Cloud Account"
-                )}
-              </Button>
-            </form>
-
-            {/* Footer note */}
-            <div
-              className="flex items-center justify-center gap-2"
-              style={{
-                color: "#6b7280",
-                fontSize: "12px",
-                marginTop: "24px",
-                lineHeight: 1.4,
-              }}
-            >
-              <Lock className="size-3.5" />
-              <span>
-                Same email = same live journal on phone, laptop & any device.
+                className="size-2 rounded-full flex-shrink-0"
+                style={{ background: "#22c55e", boxShadow: "0 0 6px #22c55e80" }}
+              />
+              <span className="text-xs text-gray-300 font-medium truncate">
+                {walletLabel} · {shortAddr(connectedAddress)}
               </span>
             </div>
-          </>
+            <button
+              type="button"
+              onClick={() => void copyAddress()}
+              className="text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0"
+              title="Copy address"
+            >
+              {copied ? (
+                <CheckCircle2 className="size-3.5 text-green-400" />
+              ) : (
+                <Copy className="size-3.5" />
+              )}
+            </button>
+          </div>
         )}
+
+        {/* Step status banner */}
+        {step !== "idle" && (
+          <div
+            className="rounded-xl p-3.5 mb-4 flex items-center gap-3"
+            style={{
+              background: "rgba(89,139,255,0.06)",
+              border: "1px solid rgba(89,139,255,0.18)",
+            }}
+          >
+            <Loader2 className="size-4 text-blue-400 animate-spin flex-shrink-0" />
+            <p className="text-sm text-blue-200 leading-snug">{stepLabels[step]}</p>
+          </div>
+        )}
+
+        {/* Connect button */}
+        <button
+          type="button"
+          id="wallet-connect-btn"
+          onClick={() => void handleConnect()}
+          disabled={step !== "idle" || hasWallet === false}
+          style={{
+            width: "100%",
+            height: "54px",
+            borderRadius: "14px",
+            background:
+              step !== "idle"
+                ? "rgba(89,139,255,0.22)"
+                : "linear-gradient(135deg, #598bff 0%, #4469e0 100%)",
+            border: "none",
+            color: "#ffffff",
+            fontSize: "15px",
+            fontWeight: 600,
+            cursor:
+              step !== "idle" || hasWallet === false ? "not-allowed" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "10px",
+            transition: "all 0.2s",
+            boxShadow:
+              step === "idle" && hasWallet !== false
+                ? "0 4px 24px rgba(89,139,255,0.38)"
+                : "none",
+          }}
+          onMouseEnter={(e) => {
+            if (step === "idle" && hasWallet !== false)
+              (e.currentTarget as HTMLButtonElement).style.transform =
+                "translateY(-1px)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)";
+          }}
+        >
+          {step !== "idle" ? (
+            <Loader2 className="size-5 animate-spin" />
+          ) : (
+            <Wallet className="size-5" />
+          )}
+          {step === "idle" ? "Connect Wallet & Sign In" : "Authenticating…"}
+        </button>
+
+        {hasWallet !== false && step === "idle" && (
+          <p className="text-center text-[11px] text-gray-600 mt-2.5">
+            MetaMask · Brave Wallet · Coinbase Wallet · any EIP-1193 wallet
+          </p>
+        )}
+
+        {/* Why wallet sign-in */}
+        <div
+          style={{
+            marginTop: "28px",
+            paddingTop: "22px",
+            borderTop: "1px solid rgba(255,255,255,0.05)",
+          }}
+        >
+          <p className="text-center text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-4">
+            Why wallet sign-in?
+          </p>
+          <div className="flex flex-col gap-3.5">
+            {[
+              {
+                icon: ShieldCheck,
+                color: "#22c55e",
+                title: "No email · No password",
+                desc: "Your wallet signature is the only key needed.",
+              },
+              {
+                icon: Globe,
+                color: "#598bff",
+                title: "Sync across all devices",
+                desc: "Same wallet = same journal data everywhere, instantly.",
+              },
+              {
+                icon: Wallet,
+                color: "#a78bfa",
+                title: "No transaction · No gas",
+                desc: "Signing is free — nothing is sent to the blockchain.",
+              },
+            ].map(({ icon: Icon, color, title, desc }) => (
+              <div key={title} className="flex items-start gap-3">
+                <div
+                  style={{
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "9px",
+                    background: `${color}14`,
+                    border: `1px solid ${color}28`,
+                    display: "grid",
+                    placeItems: "center",
+                    color,
+                    flexShrink: 0,
+                    marginTop: "1px",
+                  }}
+                >
+                  <Icon className="size-3.5" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-300">{title}</p>
+                  <p className="text-[11px] text-gray-600 leading-relaxed mt-0.5">
+                    {desc}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
+}
+;
 }

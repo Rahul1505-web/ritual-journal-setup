@@ -15,7 +15,6 @@ import appCss from "../styles.css?url";
 import { JournalProvider } from "../lib/journal-store";
 import { Toaster } from "../components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { supabase } from "@/integrations/supabase/client";
 
 function NotFoundComponent() {
   return (
@@ -130,22 +129,6 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    // Handle PKCE auth code exchange if confirmation email returned a code in query string
-    const url = new URL(window.location.href);
-    const code = url.searchParams.get("code");
-    if (code) {
-      void supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-        if (!error) {
-          url.searchParams.delete("code");
-          window.history.replaceState({}, document.title, url.toString());
-        }
-      });
-    }
-  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
