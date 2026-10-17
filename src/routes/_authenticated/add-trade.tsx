@@ -26,6 +26,7 @@ import {
   TRADE_TYPES,
   signedMoney,
   dualSignedMoney,
+  priceChangePercent,
   type Direction,
   type Emotion,
   type MarketType,
@@ -72,7 +73,8 @@ function AddTrade() {
   const [sl, setSl] = useState("");
   const [tp, setTp] = useState("");
   const [exit, setExit] = useState("");
-  const [quantity, setQuantity] = useState("");
+  const [amount, setAmount] = useState("");
+  const [leverage, setLeverage] = useState("1");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 16));
   const [tradeType, setTradeType] = useState<TradeType>("Intraday");
   const [emotion, setEmotion] = useState<Emotion>("Neutral");
@@ -82,15 +84,61 @@ function AddTrade() {
   const [charts, setCharts] = useState<string[]>([]);
   const [lightbox, setLightbox] = useState<number | null>(null);
 
-  // P&L result
-  const result = useMemo(() => {
+  // Price Change % from Entry to Exit (direction-aware)
+  const priceChangePct = useMemo(() => {
     const e = parseFloat(entry);
     const x = parseFloat(exit);
-    const q = parseFloat(quantity);
-    if ([e, x, q].some((n) => Number.isNaN(n))) return null;
-    const raw = (x - e) * q;
-    return direction === "BUY" ? raw : -raw;
-  }, [entry, exit, quantity, direction]);
+    if ([e, x].some((n) => Number.isNaN(n) || n <= 0)) return null;
+    return priceChangePercent(e, x, direction);
+  }, [entry, exit, direction]);
+
+  // Leveraged Return % (Profit % / ROE %)
+  const returnPct = useMemo(() => {
+    if (priceChangePct === null) return null;
+    const lev = parseFloat(leverage) || 1;
+    return priceChangePct * (lev > 0 ? lev : 1);
+  }, [priceChangePct, leverage]);
+
+  // Final Calculated P&L (from Amount, Leverage, and Price Change %)
+  const result = useMemo(() => {
+    const amt = parseFloat(amount);
+    if (Number.isNaN(amt) || amt <= 0) return null;
+    if (returnPct === null) return null;
+    return amt * (returnPct / 100);
+  }, [amount, returnPct]);
+
+  // Total Position Size (Amount × Leverage)
+  const positionSize = useMemo(() => {
+    const amt = parseFloat(amount);
+    const lev = parseFloat(leverage) || 1;
+    if (Number.isNaN(amt) || amt <= 0) return null;
+    return amt * (lev > 0 ? lev : 1);
+  }, [amount, leverage]);
+
+  // Effective asset units (for database storage & compatibility)
+  const computedQuantity = useMemo(() => {
+    const e = parseFloat(entry);
+    if (positionSize === null || Number.isNaN(e) || e <= 0) return 0;
+    return positionSize / e;
+  }, [positionSize, entry]);
+
+  // Stop Loss Risk % (Entry to SL)
+  const slRiskPct = useMemo(() => {
+    const e = parseFloat(entry);
+    const s = parseFloat(sl);
+    if ([e, s].some((n) => Number.isNaN(n) || n <= 0)) return null;
+    const risk = direction === "BUY" ? e - s : s - e;
+    return (risk / e) * 100;
+  }, [entry, sl, direction]);
+
+  // Take Profit Target % (Entry to TP)
+  const tpRewardPct = useMemo(() => {
+    const e = parseFloat(entry);
+    const t = parseFloat(tp);
+    if ([e, t].some((n) => Number.isNaN(n) || n <= 0)) return null;
+    const reward = direction === "BUY" ? t - e : e - t;
+    return (reward / e) * 100;
+  }, [entry, tp, direction]);
 
   // Realized R:R (from Exit Price and Stop Loss)
   const realizedRR = useMemo(() => {
@@ -128,20 +176,28 @@ function AddTrade() {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!symbol.trim() || result === null) {
-      toast.error("Add a symbol plus entry, exit and quantity.");
+    const amt = parseFloat(amount);
+    const lev = parseFloat(leverage) || 1;
+    const ePrice = parseFloat(entry);
+    const xPrice = parseFloat(exit);
+
+    if (!symbol.trim() || Number.isNaN(amt) || Number.isNaN(ePrice) || Number.isNaN(xPrice) || result === null) {
+      toast.error("Please fill in symbol, entry, exit, and invested amount.");
       return;
     }
     try {
+      const effectiveQty = computedQuantity > 0 ? computedQuantity : (amt * lev) / ePrice;
       await addTrade({
         symbol: symbol.trim().toUpperCase(),
         market,
         direction,
-        entry: parseFloat(entry),
+        entry: ePrice,
         ...(sl ? { sl: parseFloat(sl) } : {}),
         ...(tp ? { tp: parseFloat(tp) } : {}),
-        exit: parseFloat(exit),
-        quantity: parseFloat(quantity),
+        exit: xPrice,
+        amount: amt,
+        leverage: lev,
+        quantity: effectiveQty,
         date: new Date(date).toISOString(),
         tradeType,
         emotion,
@@ -152,7 +208,8 @@ function AddTrade() {
         rulesFollowed: followed,
         rulesBroken: rules.filter((r) => !followed.includes(r.id)).map((r) => r.id),
       });
-      toast.success(`${symbol.toUpperCase()} logged — ${dualSignedMoney(result, accountCurrency)}`);
+      const retText = returnPct !== null ? ` (${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(2)}%)` : "";
+      toast.success(`${symbol.toUpperCase()} logged — ${dualSignedMoney(result, accountCurrency)}${retText}`);
       navigate({ to: "/trade-log" });
     } catch (err: unknown) {
       console.error("Save trade error:", err);
@@ -265,7 +322,9 @@ function AddTrade() {
             </div>
 
             {/* Entry Price */}
-            <div className="grid gap-4 sm:grid-cols-3">
+            {/* Execution Prices */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {/* Entry Price */}
               <div className="space-y-2">
                 <Label htmlFor="entry">Entry Price</Label>
                 <Input
@@ -278,12 +337,45 @@ function AddTrade() {
                 />
               </div>
 
+              {/* Exit Price */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="exit">Exit Price</Label>
+                  {priceChangePct !== null && (
+                    <span
+                      className={cn(
+                        "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                        priceChangePct >= 0 ? "bg-profit/15 text-profit" : "bg-loss/15 text-loss",
+                      )}
+                    >
+                      {priceChangePct >= 0 ? "+" : ""}
+                      {priceChangePct.toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+                <Input
+                  id="exit"
+                  type="number"
+                  step="any"
+                  placeholder="0.00"
+                  value={exit}
+                  onChange={(e) => setExit(e.target.value)}
+                />
+              </div>
+
               {/* Stop Loss */}
               <div className="space-y-2">
-                <Label htmlFor="sl" className="flex items-center gap-1.5">
-                  Stop Loss (SL)
-                  <span className="rounded px-1 py-0.5 text-[10px] font-medium bg-loss/15 text-loss">Risk</span>
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="sl" className="flex items-center gap-1.5">
+                    Stop Loss (SL)
+                    <span className="rounded px-1 py-0.5 text-[10px] font-medium bg-loss/15 text-loss">Risk</span>
+                  </Label>
+                  {slRiskPct !== null && (
+                    <span className="text-[10px] font-medium text-loss">
+                      -{Math.abs(slRiskPct).toFixed(2)}%
+                    </span>
+                  )}
+                </div>
                 <Input
                   id="sl"
                   type="number"
@@ -297,10 +389,17 @@ function AddTrade() {
 
               {/* Take Profit */}
               <div className="space-y-2">
-                <Label htmlFor="tp" className="flex items-center gap-1.5">
-                  Take Profit (TP)
-                  <span className="rounded px-1 py-0.5 text-[10px] font-medium bg-profit/15 text-profit">Reward</span>
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="tp" className="flex items-center gap-1.5">
+                    Take Profit (TP)
+                    <span className="rounded px-1 py-0.5 text-[10px] font-medium bg-profit/15 text-profit">Reward</span>
+                  </Label>
+                  {tpRewardPct !== null && (
+                    <span className="text-[10px] font-medium text-profit">
+                      +{Math.abs(tpRewardPct).toFixed(2)}%
+                    </span>
+                  )}
+                </div>
                 <Input
                   id="tp"
                   type="number"
@@ -313,29 +412,88 @@ function AddTrade() {
               </div>
             </div>
 
-            {/* Exit Price + Quantity */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="exit">Exit Price</Label>
-                <Input
-                  id="exit"
-                  type="number"
-                  step="any"
-                  placeholder="0.00"
-                  value={exit}
-                  onChange={(e) => setExit(e.target.value)}
-                />
+            {/* Position Sizing & Leverage */}
+            <div className="rounded-xl border border-border/80 bg-surface-1/40 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Position Sizing &amp; Leverage
+                </span>
+                {positionSize !== null && (
+                  <span className="text-xs text-muted-foreground">
+                    Effective Position:{" "}
+                    <strong className="text-foreground font-semibold">
+                      {dualSignedMoney(positionSize, accountCurrency).replace("+", "")}
+                    </strong>
+                    {computedQuantity > 0 && symbol && (
+                      <span className="text-muted-foreground/80 ml-1">
+                        (≈ {computedQuantity.toFixed(4)} {symbol.toUpperCase()})
+                      </span>
+                    )}
+                  </span>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="qty">Quantity</Label>
-                <Input
-                  id="qty"
-                  type="number"
-                  step="any"
-                  placeholder="0"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                />
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {/* Invested Amount (Margin) */}
+                <div className="space-y-2">
+                  <Label htmlFor="amount" className="flex items-center justify-between">
+                    <span>Invested Amount (Margin)</span>
+                    <span className="text-xs text-muted-foreground font-semibold">{accountCurrency}</span>
+                  </Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground select-none">
+                      {accountCurrency}
+                    </span>
+                    <Input
+                      id="amount"
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="100.00"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      className="pl-7"
+                    />
+                  </div>
+                </div>
+
+                {/* Leverage */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="leverage">Leverage</Label>
+                    <span className="text-xs font-bold text-primary">{leverage || "1"}x</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="leverage"
+                      type="number"
+                      step="any"
+                      min="1"
+                      max="125"
+                      placeholder="1"
+                      value={leverage}
+                      onChange={(e) => setLeverage(e.target.value)}
+                      className="w-20 shrink-0 font-semibold text-center"
+                    />
+                    <div className="flex flex-wrap gap-1 flex-1">
+                      {[1, 2, 5, 10, 20, 50, 100].map((lev) => (
+                        <button
+                          key={lev}
+                          type="button"
+                          onClick={() => setLeverage(String(lev))}
+                          className={cn(
+                            "px-2 py-1 rounded-md text-[11px] font-semibold border transition-all",
+                            (parseFloat(leverage) || 1) === lev
+                              ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                              : "bg-surface-2 text-muted-foreground border-border hover:text-foreground hover:bg-surface-2/80",
+                          )}
+                        >
+                          {lev}x
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -490,14 +648,31 @@ function AddTrade() {
                 <div>
                   <p className="text-muted-foreground">Stop Loss</p>
                   <p className="font-mono font-semibold text-loss">{sl || "—"}</p>
+                  {slRiskPct !== null && (
+                    <span className="text-[10px] text-loss">-{Math.abs(slRiskPct).toFixed(1)}%</span>
+                  )}
                 </div>
                 <div>
                   <p className="text-muted-foreground">Plan (TP)</p>
                   <p className="font-mono font-semibold text-profit">{tp || "—"}</p>
+                  {tpRewardPct !== null && (
+                    <span className="text-[10px] text-profit">+{Math.abs(tpRewardPct).toFixed(1)}%</span>
+                  )}
                 </div>
                 <div>
                   <p className="text-muted-foreground">Exit Price</p>
                   <p className="font-mono font-semibold text-primary">{exit || "—"}</p>
+                  {priceChangePct !== null && (
+                    <span
+                      className={cn(
+                        "text-[10px] font-semibold",
+                        priceChangePct >= 0 ? "text-profit" : "text-loss",
+                      )}
+                    >
+                      {priceChangePct >= 0 ? "+" : ""}
+                      {priceChangePct.toFixed(1)}%
+                    </span>
+                  )}
                 </div>
               </div>
             )}
@@ -505,9 +680,23 @@ function AddTrade() {
 
           {/* P&L Card */}
           <Card className="gap-3 p-6">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Calculated P&amp;L
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Calculated P&amp;L
+              </p>
+              {returnPct !== null && (
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-xs font-bold",
+                    returnPct >= 0 ? "bg-profit/15 text-profit" : "bg-loss/15 text-loss",
+                  )}
+                >
+                  {returnPct >= 0 ? "+" : ""}
+                  {returnPct.toFixed(2)}% Return
+                </span>
+              )}
+            </div>
+
             <p
               className={cn(
                 "tabular font-bold",
@@ -517,10 +706,36 @@ function AddTrade() {
             >
               {result === null ? "—" : dualSignedMoney(result, accountCurrency)}
             </p>
-            <p className="text-xs text-muted-foreground">
-              (Exit − Entry) × Quantity{direction === "SELL" ? ", inverted for short" : ""}
-            </p>
-            <Button type="submit" className="mt-1 w-full">
+
+            {/* Formula breakdown */}
+            <div className="rounded-lg bg-surface-2/60 border border-border/60 p-2.5 text-xs space-y-1">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Price Move:</span>
+                <span className={cn("font-medium", priceChangePct !== null && priceChangePct >= 0 ? "text-profit" : priceChangePct !== null ? "text-loss" : "")}>
+                  {priceChangePct !== null ? `${priceChangePct >= 0 ? "+" : ""}${priceChangePct.toFixed(2)}%` : "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Leverage:</span>
+                <span className="font-semibold text-foreground">{leverage || "1"}x</span>
+              </div>
+              <div className="flex items-center justify-between text-muted-foreground border-t border-border/40 pt-1">
+                <span>Leveraged Return:</span>
+                <span className={cn("font-semibold", returnPct !== null && returnPct >= 0 ? "text-profit" : returnPct !== null ? "text-loss" : "")}>
+                  {returnPct !== null ? `${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(2)}%` : "—"}
+                </span>
+              </div>
+              {amount && (
+                <div className="flex items-center justify-between text-muted-foreground border-t border-border/40 pt-1">
+                  <span>Invested Margin:</span>
+                  <span className="font-semibold text-foreground">
+                    {accountCurrency}{parseFloat(amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <Button type="submit" className="mt-1 w-full font-semibold">
               Save Trade
             </Button>
           </Card>

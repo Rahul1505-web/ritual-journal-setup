@@ -83,10 +83,15 @@ const META_REGEX = /\s*<!--tradelog:(\{.*?\})-->\s*$/;
 
 export function packTradeNotes(
   notes: string,
-  meta: { sl?: number; tp?: number; accountId?: string },
+  meta: { sl?: number; tp?: number; amount?: number; leverage?: number; accountId?: string },
 ): string {
   const clean = notes ? notes.replace(META_REGEX, "").trim() : "";
-  const hasMeta = meta.sl !== undefined || meta.tp !== undefined || meta.accountId !== undefined;
+  const hasMeta =
+    meta.sl !== undefined ||
+    meta.tp !== undefined ||
+    meta.amount !== undefined ||
+    meta.leverage !== undefined ||
+    meta.accountId !== undefined;
   if (!hasMeta) return clean;
   const metaComment = `<!--tradelog:${JSON.stringify(meta)}-->`;
   return clean ? `${clean}\n\n${metaComment}` : metaComment;
@@ -96,18 +101,28 @@ export function unpackTradeNotes(rawNotes: string | null | undefined): {
   notes: string;
   sl?: number;
   tp?: number;
+  amount?: number;
+  leverage?: number;
   accountId?: string;
 } {
   if (!rawNotes) return { notes: "" };
   const match = rawNotes.match(META_REGEX);
   if (match) {
     try {
-      const meta = JSON.parse(match[1] as string) as { sl?: number; tp?: number; accountId?: string };
+      const meta = JSON.parse(match[1] as string) as {
+        sl?: number;
+        tp?: number;
+        amount?: number;
+        leverage?: number;
+        accountId?: string;
+      };
       const cleaned = rawNotes.replace(META_REGEX, "").trim();
       return {
         notes: cleaned,
         ...(typeof meta.sl === "number" && !isNaN(meta.sl) ? { sl: meta.sl } : {}),
         ...(typeof meta.tp === "number" && !isNaN(meta.tp) ? { tp: meta.tp } : {}),
+        ...(typeof meta.amount === "number" && !isNaN(meta.amount) ? { amount: meta.amount } : {}),
+        ...(typeof meta.leverage === "number" && !isNaN(meta.leverage) ? { leverage: meta.leverage } : {}),
         ...(typeof meta.accountId === "string" ? { accountId: meta.accountId } : {}),
       };
     } catch {
@@ -118,7 +133,7 @@ export function unpackTradeNotes(rawNotes: string | null | undefined): {
 }
 
 function toTrade(row: TradeRow, defaultAccountId?: string): Trade {
-  const { notes, sl, tp, accountId } = unpackTradeNotes(row.notes);
+  const { notes, sl, tp, amount, leverage, accountId } = unpackTradeNotes(row.notes);
   const resolvedAccountId = accountId ?? defaultAccountId;
   return {
     id: row.id,
@@ -128,6 +143,8 @@ function toTrade(row: TradeRow, defaultAccountId?: string): Trade {
     entry: num(row.entry_price),
     ...(sl !== undefined ? { sl } : {}),
     ...(tp !== undefined ? { tp } : {}),
+    ...(amount !== undefined ? { amount } : {}),
+    ...(leverage !== undefined ? { leverage } : {}),
     ...(resolvedAccountId !== undefined ? { accountId: resolvedAccountId } : {}),
     exit: num(row.exit_price),
     quantity: num(row.quantity),
@@ -350,6 +367,8 @@ export function JournalProvider({ children }: { children: ReactNode }) {
         notes: packTradeNotes(trade.notes, {
           ...(trade.sl !== undefined ? { sl: trade.sl } : {}),
           ...(trade.tp !== undefined ? { tp: trade.tp } : {}),
+          ...(trade.amount !== undefined ? { amount: trade.amount } : {}),
+          ...(trade.leverage !== undefined ? { leverage: trade.leverage } : {}),
           accountId: trade.accountId ?? accounts[0]?.id ?? "acc_main",
         }),
         chart_urls: trade.charts ?? [],

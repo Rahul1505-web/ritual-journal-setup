@@ -87,13 +87,13 @@ function TradeLog() {
     });
   }, [trades, selectedAccount, accounts, from, to, market, direction, tradeType, outcome, sort, asc]);
 
-  const totalPnl = rows.reduce((acc, t) => {
+  const totalPnl = rows.reduce((sum, t) => {
     const tradePnl = pnl(t);
     if (selectedAccount === "all") {
-      const acc = accounts.find((a) => a.id === t.accountId) ?? accounts[0];
-      return acc + toUSD(tradePnl, acc?.currency ?? "$");
+      const account = accounts.find((a) => a.id === t.accountId) ?? accounts[0];
+      return sum + toUSD(tradePnl, account?.currency ?? "$");
     }
-    return acc + tradePnl;
+    return sum + tradePnl;
   }, 0);
 
   const reset = () => {

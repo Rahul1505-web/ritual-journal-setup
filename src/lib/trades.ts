@@ -30,11 +30,15 @@ export interface Trade {
   tags: MistakeTag[];
   notes: string;
   /** Stop Loss price */
-  sl?: number;
+  sl?: number | undefined;
   /** Take Profit price */
-  tp?: number;
+  tp?: number | undefined;
   /** Account this trade belongs to */
   accountId?: string;
+  /** Invested amount / margin */
+  amount?: number | undefined;
+  /** Leverage multiplier (e.g. 1, 5, 10, 20) */
+  leverage?: number | undefined;
   /** Supabase Storage paths of attached chart screenshots */
   charts?: string[];
   rulesFollowed?: string[];
@@ -168,6 +172,35 @@ export function pnl(t: Pick<Trade, "entry" | "exit" | "quantity" | "direction">)
   return t.direction === "BUY" ? raw : -raw;
 }
 
+/** Calculate percentage change from entry to exit based on trade direction */
+export function priceChangePercent(entry: number, exit: number, direction: Direction): number {
+  if (entry <= 0) return 0;
+  const pct = ((exit - entry) / entry) * 100;
+  return direction === "BUY" ? pct : -pct;
+}
+
+/** Calculate leveraged return percentage (ROE %) */
+export function leveragedReturnPercent(
+  entry: number,
+  exit: number,
+  direction: Direction,
+  leverage = 1,
+): number {
+  return priceChangePercent(entry, exit, direction) * (leverage > 0 ? leverage : 1);
+}
+
+/** Calculate final profit from invested amount, leverage, entry and exit */
+export function leveragedProfit(
+  amount: number,
+  leverage: number,
+  entry: number,
+  exit: number,
+  direction: Direction,
+): number {
+  const roe = leveragedReturnPercent(entry, exit, direction, leverage);
+  return amount * (roe / 100);
+}
+
 export const money = (n: number) =>
   `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -256,6 +289,62 @@ export function sortByDate(trades: Trade[]) {
   return [...trades].sort((a, b) => +new Date(a.date) - +new Date(b.date));
 }
 
+/**
+ * Calculates the realized Risk-to-Reward ratio (or planned R:R if TP is set).
+ * Returns the reward multiple relative to 1 unit of risk (e.g. 2.33 for a 1:2.33 trade).
+ */
+export function tradeRR(t: Trade): number | null {
+  // 1. Direct Stop Loss Calculation:
+  if (t.sl != null && t.sl > 0 && t.entry > 0) {
+    const risk = t.direction === "BUY" ? t.entry - t.sl : t.sl - t.entry;
+    const effectiveRisk = risk > 0 ? risk : Math.abs(t.entry - t.sl);
+    if (effectiveRisk > 0) {
+      const reward = t.direction === "BUY" ? t.exit - t.entry : t.entry - t.exit;
+      const ratio = reward / effectiveRisk;
+      if (!isNaN(ratio) && isFinite(ratio)) {
+        return Math.round(ratio * 100) / 100;
+      }
+    }
+  }
+
+  // 2. Fallback to Take Profit Target (Planned R:R) if SL is present:
+  if (t.sl != null && t.sl > 0 && t.tp != null && t.tp > 0 && t.entry > 0) {
+    const risk = Math.abs(t.entry - t.sl);
+    const plannedReward = Math.abs(t.tp - t.entry);
+    if (risk > 0) {
+      const ratio = plannedReward / risk;
+      if (!isNaN(ratio) && isFinite(ratio)) {
+        return Math.round(ratio * 100) / 100;
+      }
+    }
+  }
+
+  // 3. Check if trader recorded R:R directly in notes or trade thesis (e.g. "R:R 1:2.33", "2.33R"):
+  if (t.notes) {
+    const notesMatch = t.notes.match(
+      /(?:r:?r|risk\s*(?::|\/|to)\s*reward)\s*(?:is|=|:)?\s*(?:1\s*:\s*)?([0-9]+(?:\.[0-9]+)?)/i,
+    );
+    if (notesMatch && notesMatch[1]) {
+      const val = parseFloat(notesMatch[1]);
+      if (!isNaN(val) && val > 0) return Math.round(val * 100) / 100;
+    }
+
+    const colonMatch = t.notes.match(/\b1\s*:\s*([0-9]+(?:\.[0-9]+)?)/i);
+    if (colonMatch && colonMatch[1]) {
+      const val = parseFloat(colonMatch[1]);
+      if (!isNaN(val) && val > 0) return Math.round(val * 100) / 100;
+    }
+
+    const rUnitMatch = t.notes.match(/\b([0-9]+(?:\.[0-9]+)?)\s*R\b/i);
+    if (rUnitMatch && rUnitMatch[1]) {
+      const val = parseFloat(rUnitMatch[1]);
+      if (!isNaN(val) && val > 0) return Math.round(val * 100) / 100;
+    }
+  }
+
+  return null;
+}
+
 export function stats(trades: Trade[]) {
   const pnls = trades.map(pnl);
   const wins = pnls.filter((p) => p > 0);
@@ -263,6 +352,21 @@ export function stats(trades: Trade[]) {
   const total = pnls.reduce((a, b) => a + b, 0);
   const avgWin = wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length : 0;
   const avgLoss = losses.length ? losses.reduce((a, b) => a + b, 0) / losses.length : 0;
+
+  // Calculate individual trade R:Rs
+  const validTradeRRs = trades
+    .map(tradeRR)
+    .filter((r): r is number => r !== null && !isNaN(r) && r > 0);
+  const avgTradeRR =
+    validTradeRRs.length > 0
+      ? validTradeRRs.reduce((a, b) => a + b, 0) / validTradeRRs.length
+      : 0;
+
+  // Aggregate PnL-based R:R (avgWin / avgLoss)
+  const pnlRR = avgLoss !== 0 ? Math.abs(avgWin / avgLoss) : 0;
+
+  // Resolved R:R: Prioritize trade-level R:R average if available; otherwise use PnL R:R
+  const rr = avgTradeRR > 0 ? avgTradeRR : pnlRR;
 
   // current streak from most recent trades
   const ordered = sortByDate(trades).reverse();
@@ -290,7 +394,9 @@ export function stats(trades: Trade[]) {
     avgLoss,
     best: pnls.length ? Math.max(...pnls) : 0,
     worst: pnls.length ? Math.min(...pnls) : 0,
-    rr: avgLoss !== 0 ? Math.abs(avgWin / avgLoss) : 0,
+    rr,
+    avgTradeRR,
+    validTradeRRsCount: validTradeRRs.length,
     streak,
     streakWin,
   };
@@ -344,7 +450,7 @@ export function byEmotion(trades: Trade[]) {
 
 export function byMistake(trades: Trade[]) {
   return MISTAKE_TAGS.map((tag) => {
-    const subset = trades.filter((tr) => tr.tags.includes(tag));
+    const subset = trades.filter((tr) => (tr.tags ?? []).includes(tag));
     return {
       tag,
       count: subset.length,
