@@ -1,11 +1,20 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CandlestickChart, Eye, EyeOff, Loader2, Lock, Mail, RefreshCw, Zap } from "lucide-react";
+import {
+  AlertTriangle,
+  CandlestickChart,
+  Eye,
+  EyeOff,
+  Loader2,
+  Lock,
+  Mail,
+  MailCheck,
+  RefreshCw,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { getStoredGuestUser, setGuestUser } from "@/lib/auth-helpers";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -14,12 +23,12 @@ export const Route = createFileRoute("/auth")({
       {
         name: "description",
         content:
-          "Sign in to TradeLog Pro to log trades, track P&L and review your trading psychology.",
+          "Sign in to TradeLog Pro to log trades, track P&L and review your trading psychology across all devices.",
       },
       { property: "og:title", content: "Sign in — TradeLog Pro" },
       {
         property: "og:description",
-        content: "Access your private trading journal, analytics and AI coach.",
+        content: "Access your cloud-synced trading journal, analytics and AI coach.",
       },
     ],
   }),
@@ -35,51 +44,60 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [unconfirmedEmail, setUnconfirmedEmail] = useState<string | null>(null);
+  const [awaitingConfirmationEmail, setAwaitingConfirmationEmail] = useState<string | null>(null);
+  const [signInError, setSignInError] = useState<string | null>(null);
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         navigate({ to: "/", replace: true });
-        return;
       }
-      const guest = getStoredGuestUser();
-      if (guest) {
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) {
+        toast.success("Signed in successfully! Loading your cloud data...");
         navigate({ to: "/", replace: true });
       }
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session) navigate({ to: "/", replace: true });
-    });
+
     return () => sub.subscription.unsubscribe();
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSignInError(null);
+
     if (!email || !password) {
       toast.error("Please enter your email and password.");
       return;
     }
+
     setBusy(true);
     try {
       if (mode === "signup") {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          ...(typeof window !== "undefined"
+            ? { options: { emailRedirectTo: `${window.location.origin}/` } }
+            : {}),
+        });
+
         if (error) throw error;
 
         if (data.session) {
-          toast.success("Account created! Welcome to TradeLog Pro.");
+          toast.success("Account created and confirmed! Welcome to TradeLog Pro.");
           navigate({ to: "/", replace: true });
         } else {
-          // Supabase mailer requires confirmation or emails are delayed.
-          // Automatically initialize user workspace so they can start immediately!
-          setGuestUser(email);
-          toast.success("Account created! Entering your private journal workspace.");
-          navigate({ to: "/", replace: true });
+          // Cloud confirmation email required
+          setAwaitingConfirmationEmail(email);
+          toast.success("Account created! Confirmation email dispatched to your inbox.");
         }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
-          setUnconfirmedEmail(email);
+          setSignInError(error.message);
           throw error;
         }
       }
@@ -90,24 +108,25 @@ function AuthPage() {
     }
   };
 
-  const handleInstantAccess = (targetEmail?: string) => {
-    const activeEmail = targetEmail || email || "trader@tradelog.local";
-    setGuestUser(activeEmail);
-    toast.success(`Welcome! Entered TradeLog Pro as ${activeEmail}`);
-    navigate({ to: "/", replace: true });
-  };
-
-  const handleResend = async () => {
-    const target = unconfirmedEmail || email;
+  const handleResend = async (targetEmail?: string) => {
+    const target = targetEmail || email;
     if (!target) {
       toast.error("Please enter your email address.");
       return;
     }
+
     setBusy(true);
     try {
-      const { error } = await supabase.auth.resend({ type: "signup", email: target });
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: target,
+        ...(typeof window !== "undefined"
+          ? { options: { emailRedirectTo: `${window.location.origin}/` } }
+          : {}),
+      });
+
       if (error) throw error;
-      toast.success(`Confirmation email resent to ${target}. Please check spam/junk.`);
+      toast.success(`Confirmation email resent to ${target}. Please check your Inbox and Spam folder!`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to resend confirmation email.");
     } finally {
@@ -166,237 +185,258 @@ function AuthPage() {
               marginBottom: "28px",
             }}
           >
-            {mode === "signin"
-              ? "Sign in to access your trading journal"
-              : "Create an account to start your journal"}
+            Cloud-synced trading journal across all your devices
           </p>
         </div>
 
-        {/* Unconfirmed / Email help notice */}
-        {unconfirmedEmail && (
-          <div
-            className="mb-5 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3.5 text-xs text-amber-200"
-            style={{ lineHeight: 1.5 }}
-          >
-            <div className="font-semibold text-amber-300 mb-1 flex items-center gap-1.5">
-              <Zap className="size-3.5 text-amber-400" />
-              <span>Email confirmation pending or delayed?</span>
+        {/* State: Awaiting confirmation email screen */}
+        {awaitingConfirmationEmail ? (
+          <div className="flex flex-col items-center text-center">
+            <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <MailCheck className="size-7" />
             </div>
-            <p className="text-amber-200/80 mb-2.5">
-              Free mail delivery can be delayed. You don't have to wait — jump straight in now:
+
+            <h2 className="text-xl font-bold text-white mb-2">Check your email</h2>
+
+            <p className="text-sm text-gray-300 mb-4">
+              We have sent a confirmation email to{" "}
+              <strong className="text-white block mt-0.5 break-all">
+                {awaitingConfirmationEmail}
+              </strong>
             </p>
-            <div className="flex items-center gap-2">
+
+            <div className="w-full rounded-xl border border-amber-500/25 bg-amber-500/10 p-3.5 text-xs text-amber-200 text-left mb-5">
+              <div className="font-semibold text-amber-300 mb-1 flex items-center gap-1.5">
+                <AlertTriangle className="size-3.5 text-amber-400" />
+                <span>Can't find the email in your primary inbox?</span>
+              </div>
+              <ul className="list-disc pl-4 space-y-1 text-amber-200/90 text-[11px] leading-relaxed">
+                <li>
+                  Check your <strong>Spam / Junk</strong> folder (emails from <code>noreply@mail.app.supabase.io</code> are often sorted to Spam).
+                </li>
+                <li>Check your <strong>Promotions</strong> or <strong>Updates</strong> tab in Gmail.</li>
+                <li>Click the confirmation link in the email to activate your account. You can then sign in from any device.</li>
+              </ul>
+            </div>
+
+            <div className="w-full flex flex-col gap-2">
               <Button
                 type="button"
-                size="sm"
-                onClick={() => handleInstantAccess(unconfirmedEmail)}
-                className="bg-amber-500 hover:bg-amber-600 text-black font-semibold text-xs h-7 px-3"
+                onClick={() => void handleResend(awaitingConfirmationEmail)}
+                disabled={busy}
+                className="w-full bg-[#598bff] hover:bg-[#4a7ae8] text-white font-medium h-11"
               >
-                Enter Instant Workspace
+                {busy ? <Loader2 className="size-4 animate-spin" /> : "Resend confirmation email"}
               </Button>
               <Button
                 type="button"
-                size="sm"
                 variant="ghost"
-                onClick={() => void handleResend()}
-                disabled={busy}
-                className="text-amber-300 hover:bg-amber-500/15 text-xs h-7 px-2 gap-1"
+                onClick={() => {
+                  setAwaitingConfirmationEmail(null);
+                  setMode("signin");
+                }}
+                className="text-gray-400 hover:text-white text-xs h-9"
               >
-                <RefreshCw className="size-3" />
-                Resend link
+                Back to Sign In
               </Button>
             </div>
           </div>
-        )}
-
-        {/* Tab switcher */}
-        <div
-          className="flex mb-5"
-          style={{
-            backgroundColor: "#1f2937",
-            borderRadius: "10px",
-            padding: "4px",
-          }}
-        >
-          {(["signin", "signup"] as Mode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => {
-                setMode(m);
-                setUnconfirmedEmail(null);
-              }}
+        ) : (
+          <>
+            {/* Tab switcher */}
+            <div
+              className="flex mb-5"
               style={{
-                flex: 1,
-                padding: "8px 0",
-                borderRadius: "8px",
-                fontSize: "13px",
-                fontWeight: 500,
-                border: "none",
-                cursor: "pointer",
-                transition: "all 0.2s",
-                backgroundColor: mode === m ? "#598bff" : "transparent",
-                color: mode === m ? "#ffffff" : "#9ca3af",
+                backgroundColor: "#1f2937",
+                borderRadius: "10px",
+                padding: "4px",
               }}
             >
-              {m === "signin" ? "Sign In" : "Sign Up"}
-            </button>
-          ))}
-        </div>
+              {(["signin", "signup"] as Mode[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setMode(m);
+                    setSignInError(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: "8px 0",
+                    borderRadius: "8px",
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    border: "none",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    backgroundColor: mode === m ? "#598bff" : "transparent",
+                    color: mode === m ? "#ffffff" : "#9ca3af",
+                  }}
+                >
+                  {m === "signin" ? "Sign In" : "Sign Up"}
+                </button>
+              ))}
+            </div>
 
-        {/* Form */}
-        <form onSubmit={(e) => void handleSubmit(e)} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {/* Email */}
-          <div style={{ position: "relative" }}>
-            <Mail
-              className="size-4"
-              style={{
-                position: "absolute",
-                left: "14px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "#6b7280",
-                pointerEvents: "none",
-              }}
-            />
-            <input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              style={{
-                width: "100%",
-                height: "48px",
-                paddingLeft: "40px",
-                paddingRight: "16px",
-                backgroundColor: "#1f2937",
-                border: "1px solid rgba(255,255,255,0.08)",
-                borderRadius: "10px",
-                color: "#f9fafb",
-                fontSize: "14px",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-
-          {/* Password */}
-          <div style={{ position: "relative" }}>
-            <Lock
-              className="size-4"
-              style={{
-                position: "absolute",
-                left: "14px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "#6b7280",
-                pointerEvents: "none",
-              }}
-            />
-            <input
-              type={showPassword ? "text" : "password"}
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              style={{
-                width: "100%",
-                height: "48px",
-                paddingLeft: "40px",
-                paddingRight: "44px",
-                backgroundColor: "#1f2937",
-                border: "1px solid rgba(255,255,255,0.08)",
-                borderRadius: "10px",
-                color: "#f9fafb",
-                fontSize: "14px",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              style={{
-                position: "absolute",
-                right: "14px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: "#6b7280",
-                padding: 0,
-              }}
-            >
-              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            </button>
-          </div>
-
-          <Button
-            type="submit"
-            disabled={busy}
-            className="w-full justify-center font-medium mt-1"
-            style={{
-              height: "50px",
-              borderRadius: "10px",
-              fontSize: "15px",
-              backgroundColor: "#598bff",
-              color: "#ffffff",
-              border: "none",
-            }}
-          >
-            {busy ? (
-              <Loader2 className="size-5 animate-spin" />
-            ) : mode === "signin" ? (
-              "Sign In"
-            ) : (
-              "Create Account"
+            {/* Error helper notice */}
+            {signInError && (
+              <div
+                className="mb-4 rounded-xl border border-red-500/25 bg-red-500/10 p-3.5 text-xs text-red-200 text-left"
+                style={{ lineHeight: 1.5 }}
+              >
+                <div className="font-semibold text-red-300 mb-1 flex items-center gap-1.5">
+                  <AlertTriangle className="size-3.5 text-red-400" />
+                  <span>Invalid credentials or email not confirmed</span>
+                </div>
+                <p className="text-red-200/80 mb-2.5 text-[11px]">
+                  If you just created your account, please confirm your email first. Be sure to check your <strong>Spam / Junk</strong> folder in Gmail for the link from <code>noreply@mail.app.supabase.io</code>.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleResend(email)}
+                  disabled={busy}
+                  className="border-red-500/30 bg-red-500/15 hover:bg-red-500/25 text-red-200 text-xs h-7 px-2.5 gap-1.5"
+                >
+                  <RefreshCw className="size-3" />
+                  Resend confirmation email
+                </Button>
+              </div>
             )}
-          </Button>
-        </form>
 
-        {/* Divider */}
-        <div className="relative my-4 flex items-center justify-center">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-white/10" />
-          </div>
-          <span className="relative bg-[#111827] px-3 text-xs uppercase tracking-wider text-gray-500">
-            or
-          </span>
-        </div>
+            {/* Form */}
+            <form
+              onSubmit={(e) => void handleSubmit(e)}
+              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+            >
+              {/* Email */}
+              <div style={{ position: "relative" }}>
+                <Mail
+                  className="size-4"
+                  style={{
+                    position: "absolute",
+                    left: "14px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "#6b7280",
+                    pointerEvents: "none",
+                  }}
+                />
+                <input
+                  type="email"
+                  placeholder="Email address"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  style={{
+                    width: "100%",
+                    height: "48px",
+                    paddingLeft: "40px",
+                    paddingRight: "16px",
+                    backgroundColor: "#1f2937",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: "10px",
+                    color: "#f9fafb",
+                    fontSize: "14px",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
 
-        {/* Instant Access Button */}
-        <Button
-          type="button"
-          onClick={() => handleInstantAccess()}
-          variant="outline"
-          className="w-full justify-center font-medium gap-2 border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-white"
-          style={{
-            height: "48px",
-            borderRadius: "10px",
-            fontSize: "14px",
-          }}
-        >
-          <Zap className="size-4 text-amber-400" />
-          ⚡ Instant Access (No Email Needed)
-        </Button>
+              {/* Password */}
+              <div style={{ position: "relative" }}>
+                <Lock
+                  className="size-4"
+                  style={{
+                    position: "absolute",
+                    left: "14px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "#6b7280",
+                    pointerEvents: "none",
+                  }}
+                />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  style={{
+                    width: "100%",
+                    height: "48px",
+                    paddingLeft: "40px",
+                    paddingRight: "44px",
+                    backgroundColor: "#1f2937",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: "10px",
+                    color: "#f9fafb",
+                    fontSize: "14px",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  style={{
+                    position: "absolute",
+                    right: "14px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#6b7280",
+                    padding: 0,
+                  }}
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
 
-        {/* Footer note */}
-        <div
-          className="flex items-center justify-center gap-2"
-          style={{
-            color: "#6b7280",
-            fontSize: "12px",
-            marginTop: "20px",
-            lineHeight: 1.4,
-          }}
-        >
-          <Lock className="size-3.5" />
-          <span>
-            Your data is private. Full AI Coach & trade analytics unlocked.
-          </span>
-        </div>
+              <Button
+                type="submit"
+                disabled={busy}
+                className="w-full justify-center font-medium mt-2"
+                style={{
+                  height: "50px",
+                  borderRadius: "10px",
+                  fontSize: "15px",
+                  backgroundColor: "#598bff",
+                  color: "#ffffff",
+                  border: "none",
+                }}
+              >
+                {busy ? (
+                  <Loader2 className="size-5 animate-spin" />
+                ) : mode === "signin" ? (
+                  "Sign In with Email"
+                ) : (
+                  "Create Cloud Account"
+                )}
+              </Button>
+            </form>
+
+            {/* Footer note */}
+            <div
+              className="flex items-center justify-center gap-2"
+              style={{
+                color: "#6b7280",
+                fontSize: "12px",
+                marginTop: "24px",
+                lineHeight: 1.4,
+              }}
+            >
+              <Lock className="size-3.5" />
+              <span>
+                Same email = same live journal on phone, laptop & any device.
+              </span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
