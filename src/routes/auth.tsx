@@ -62,17 +62,30 @@ function shortAddr(address: string): string {
 }
 
 /**
- * personal_sign is deterministic for secp256k1:
- * same private key + same message = same signature every time.
- * This means the same wallet always produces the same Supabase credentials.
+ * Official EIP-4361 (Sign-In with Ethereum / SIWE) standard format.
+ * Adheres strictly to ABNF grammar recognized natively by MetaMask
+ * to prevent arbitrary message phishing heuristics.
  */
-function buildSignMessage(address: string): string {
+function buildSiweMessage({
+  address,
+  domain,
+  uri,
+  chainId,
+}: {
+  address: string;
+  domain: string;
+  uri: string;
+  chainId: number;
+}): string {
   return (
-    `TradeLog Pro — Wallet Sign-In\n\n` +
-    `Sign this message to authenticate securely.\n` +
-    `No transaction will be made and no gas is charged.\n\n` +
-    `Wallet: ${address.toLowerCase()}\n\n` +
-    `Your signature syncs your trading journal across every device.`
+    `${domain} wants you to sign in with your Ethereum account:\n` +
+    `${address}\n\n` +
+    `Sign in to TradeLog Pro to sync your trading journal.\n\n` +
+    `URI: ${uri}\n` +
+    `Version: 1\n` +
+    `Chain ID: ${chainId}\n` +
+    `Nonce: tradelogpro2026\n` +
+    `Issued At: 2026-01-01T00:00:00.000Z`
   );
 }
 
@@ -137,9 +150,20 @@ function AuthPage() {
       setConnectedAddress(address);
       setWalletLabel(getWalletLabel(window.ethereum));
 
-      /* Step 2 — sign deterministic message (no gas, no transaction) */
+      /* Step 2 — sign deterministic message using official SIWE (EIP-4361) */
       setStep("signing");
-      const message = buildSignMessage(address);
+
+      const chainIdHex = (await window.ethereum.request({
+        method: "eth_chainId",
+      }).catch(() => "0x1")) as string;
+      const chainId = parseInt(chainIdHex, 16) || 1;
+
+      const message = buildSiweMessage({
+        address,
+        domain: window.location.host,
+        uri: window.location.origin,
+        chainId,
+      });
       const hexMessage = stringToHex(message);
 
       let signature: string;
