@@ -39,6 +39,7 @@ export const Route = createFileRoute("/_authenticated/profile")({
 function Profile() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [email, setEmail] = useState<string>("");
   const [walletAddress, setWalletAddress] = useState<string>("");
   const [walletType, setWalletType] = useState<string>("");
   const [name, setName] = useState<string>("");
@@ -47,11 +48,16 @@ function Profile() {
   useEffect(() => {
     void getEffectiveUser().then((user) => {
       if (user) {
-        // Wallet auth stores address in user_metadata
-        const addr: string = user.user_metadata?.wallet_address ?? "";
+        const userEmail =
+          user.email && !user.email.endsWith("@wallet.tradelog.app")
+            ? user.email
+            : "";
+        setEmail(userEmail);
+        const metadata = user.user_metadata as Record<string, string | undefined> | undefined;
+        const addr: string = metadata?.wallet_address ?? "";
         setWalletAddress(addr);
-        setWalletType(user.user_metadata?.wallet_type ?? "Wallet");
-        setName(user.user_metadata?.full_name ?? user.user_metadata?.name ?? "");
+        setWalletType(metadata?.wallet_type ?? "Wallet");
+        setName(metadata?.full_name ?? metadata?.name ?? "");
         setIsGuest(!!user.isGuest);
       }
     });
@@ -83,7 +89,7 @@ function Profile() {
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Connected wallet</Label>
+              <Label>{walletAddress ? "Account / Wallet" : "Account Email"}</Label>
               <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${isGuest ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20' : 'bg-primary/10 text-primary border border-primary/20'}`}>
                 {isGuest ? '⚡ Local Workspace' : '☁️ Cloud Synced'}
               </span>
@@ -94,8 +100,10 @@ function Profile() {
                   <span className="text-[11px] text-muted-foreground font-medium">{walletType}</span>
                   <span className="font-mono text-xs break-all text-foreground">{walletAddress}</span>
                 </>
+              ) : email ? (
+                <span className="text-foreground">{email}</span>
               ) : (
-                <span className="text-muted-foreground">No wallet linked</span>
+                <span className="text-muted-foreground">{isGuest ? "Guest Trader" : "Signed In"}</span>
               )}
             </div>
           </div>

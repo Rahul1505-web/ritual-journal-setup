@@ -15,6 +15,8 @@ import appCss from "../styles.css?url";
 import { JournalProvider } from "../lib/journal-store";
 import { Toaster } from "../components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { supabase } from "../integrations/supabase/client";
+import { toast } from "sonner";
 
 function NotFoundComponent() {
   return (
@@ -129,6 +131,20 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (code) {
+      void supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+        if (!error && data?.session) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+          toast.success("Email verified successfully! Welcome to TradeLog Pro.");
+        }
+      });
+    }
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
