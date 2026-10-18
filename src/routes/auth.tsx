@@ -226,7 +226,14 @@ function AuthPage() {
       });
 
       if (error) {
-        toast.error(error.message);
+        if (error.message === "{}" || error.status === 500) {
+          toast.error(
+            "SMTP 500 Error: Supabase could not send the email through Resend. Check that Sender Email is onboarding@resend.dev.",
+            { duration: 8000 }
+          );
+        } else {
+          toast.error(error.message);
+        }
         return;
       }
 
