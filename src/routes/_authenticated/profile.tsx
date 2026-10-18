@@ -53,11 +53,11 @@ function Profile() {
             ? user.email
             : "";
         setEmail(userEmail);
-        const metadata = user.user_metadata as Record<string, string | undefined> | undefined;
-        const addr: string = metadata?.wallet_address ?? "";
+        const metadata = user.user_metadata as Record<string, any> | undefined;
+        const addr: string = (metadata?.["wallet_address"] as string) ?? "";
         setWalletAddress(addr);
-        setWalletType(metadata?.wallet_type ?? "Wallet");
-        setName(metadata?.full_name ?? metadata?.name ?? "");
+        setWalletType((metadata?.["wallet_type"] as string) ?? "Wallet");
+        setName((metadata?.["full_name"] as string) ?? (metadata?.["name"] as string) ?? "");
         setIsGuest(!!user.isGuest);
       }
     });
