@@ -11,6 +11,7 @@ import {
   Pencil,
   Plus,
   Send,
+  Sparkles,
   Trash2,
   User,
   X,
@@ -157,8 +158,9 @@ function loadInitialData(): { sessions: ChatSession[]; activeId: string } {
 }
 
 const SUGGESTIONS = [
+  "Reflect on my latest diary thoughts & trading mindset",
   "Generate a PDF audit of my last 4 trades",
-  "Generate a PDF audit of my last 3 trades",
+  "Did my thoughts or emotions in my diary affect my recent trades?",
   "When is the next FOMC meeting?",
   "What are the major macro events in 2026 and 2027?",
   "Analyse my last 10 trades",
@@ -373,13 +375,14 @@ function FormattedMessage({ content, isUser }: { content: string; isUser: boolea
 }
 
 function AiCoach() {
-  const { trades, rules } = useJournal();
+  const { trades, rules, diaryEntries } = useJournal();
   const callCoach = useServerFn(askCoach);
 
   const [data] = useState(loadInitialData);
   const [sessions, setSessions] = useState<ChatSession[]>(data.sessions);
   const [activeId, setActiveId] = useState<string>(data.activeId);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showSuggestions, setShowSuggestions] = useState(true);
 
   // Chat title editing state
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -569,6 +572,36 @@ function AiCoach() {
           .map((s2) => `${s2.symbol} x${s2.trades} ${signedMoney(s2.value)}`)
           .join("; "),
       "Active Trading Rules: " + (rules.length > 0 ? rules.map((r) => r.text).join(" | ") : "No rules logged yet"),
+      "",
+      "TRADER DIARY & THOUGHT LOGS (All written thoughts by trader, newest first):",
+      ...(diaryEntries.length > 0
+        ? diaryEntries.slice(0, 20).map((entry, idx) => {
+            const moodStr = entry.mood ? ` | Mood: ${entry.mood}` : "";
+            const sessStr = entry.session ? ` | Session: ${entry.session}` : "";
+            const titleStr = entry.title ? ` - "${entry.title}"` : "";
+            const cleanThoughts = entry.content
+              .replace(
+                /<span style="[^"]*background-color:[^"]*"[^>]*>([\s\S]*?)<\/span>/gi,
+                "⭐ [Trader Highlighted: $1] ⭐",
+              )
+              .replace(/<mark[^>]*>([\s\S]*?)<\/mark>/gi, "⭐ [Trader Highlighted: $1] ⭐")
+              .replace(/<br\s*\/?>/gi, "\n")
+              .replace(/<\/div>/gi, "\n")
+              .replace(/<\/p>/gi, "\n")
+              .replace(/<[^>]+>/g, "")
+              .trim();
+            const scStr =
+              entry.screenshots && entry.screenshots.length > 0
+                ? `Attached Charts/Screenshots: ${entry.screenshots.map((s, i) => `#${i + 1} "${s.caption || "Chart"}"`).join(", ")}`
+                : "";
+            return [
+              `[Diary Page #${idx + 1} | Day: ${entry.day} | Date: ${entry.date}${moodStr}${sessStr}${titleStr}]`,
+              ...(scStr ? [scStr] : []),
+              `THOUGHTS & RECORD:`,
+              cleanThoughts || "Empty thoughts on this page.",
+            ].join("\n");
+          })
+        : ["No diary thoughts recorded yet."]),
     ].join("\n");
   };
 
@@ -1111,20 +1144,45 @@ function AiCoach() {
           </div>
 
           {/* Suggestion Chips & Message Input */}
-          <div className="border-t border-border p-3 sm:p-4">
-            <div className="mb-3 flex flex-wrap gap-2">
-              {SUGGESTIONS.map((s) => (
+          <div className="border-t border-border p-2.5 sm:p-3">
+            {showSuggestions ? (
+              <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
+                <span className="shrink-0 text-[10px] uppercase font-semibold text-muted-foreground flex items-center gap-1 pl-1">
+                  <Sparkles className="size-3 text-primary shrink-0" />
+                  <span>Prompts:</span>
+                </span>
+                {SUGGESTIONS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void send(s)}
+                    className="shrink-0 whitespace-nowrap rounded-full border border-border/80 bg-surface/60 hover:bg-surface px-2.5 py-1 text-[11px] text-muted-foreground transition-all hover:border-primary/50 hover:text-primary disabled:opacity-50 active:scale-95"
+                  >
+                    {s}
+                  </button>
+                ))}
                 <button
-                  key={s}
                   type="button"
-                  disabled={loading}
-                  onClick={() => void send(s)}
-                  className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-50"
+                  onClick={() => setShowSuggestions(false)}
+                  title="Hide quick prompts"
+                  className="shrink-0 p-1 rounded-full text-muted-foreground/70 hover:text-foreground hover:bg-surface-2 transition-colors ml-1"
                 >
-                  {s}
+                  <X className="size-3" />
                 </button>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="mb-1.5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowSuggestions(true)}
+                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/80 hover:text-primary transition-colors py-0.5 px-2 rounded-md hover:bg-surface/60"
+                >
+                  <Sparkles className="size-3 text-primary" />
+                  <span>Show quick prompts</span>
+                </button>
+              </div>
+            )}
             <form
               className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2"
               onSubmit={(e) => {
@@ -1145,7 +1203,7 @@ function AiCoach() {
                   }
                 }}
                 placeholder="Ask about your trades, mistakes, or request a PDF report…"
-                className="min-h-[52px] resize-none"
+                className="min-h-[48px] max-h-36 resize-none text-xs sm:text-sm"
               />
               <Button type="submit" size="icon" className="size-11 shrink-0" disabled={loading}>
                 <Send className="size-4" />

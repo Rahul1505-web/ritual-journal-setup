@@ -2,6 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BarChart3,
   Bot,
+  BookOpen,
   LayoutDashboard,
   ListChecks,
   PlusCircle,
@@ -37,6 +38,7 @@ const NAV = [
   { to: "/trade-log", label: "Trade Log", exact: false, icon: TableProperties },
   { to: "/analytics", label: "Analytics", exact: false, icon: BarChart3 },
   { to: "/ai-coach", label: "AI Coach", exact: false, icon: Bot },
+  { to: "/diary", label: "Diary", exact: false, icon: BookOpen },
   { to: "/rules", label: "Rules", exact: false, icon: ListChecks },
   { to: "/accounts", label: "Accounts", exact: false, icon: WalletCards },
   { to: "/profile", label: "Profile", exact: false, icon: User },

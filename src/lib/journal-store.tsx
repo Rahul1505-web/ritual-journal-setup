@@ -23,10 +23,12 @@ import {
   type Direction,
   type TradingAccount,
 } from "./trades";
+import { DEFAULT_DIARY_ENTRIES, type DiaryEntry } from "./diary";
 
 const LOCAL_TRADES_KEY = "tradelog_local_trades";
 const LOCAL_RULES_KEY = "tradelog_local_rules";
 const LOCAL_ACCOUNTS_KEY = "tradelog_local_accounts";
+const LOCAL_DIARY_KEY = "tradelog_local_diary";
 
 function getLocalData<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -81,6 +83,10 @@ interface JournalContextValue {
   addAccount: (account: Omit<TradingAccount, "id">) => Promise<TradingAccount>;
   updateAccount: (id: string, updates: Partial<TradingAccount>) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
+  diaryEntries: DiaryEntry[];
+  addDiaryEntry: (entry: Omit<DiaryEntry, "id" | "createdAt" | "updatedAt">) => Promise<DiaryEntry>;
+  updateDiaryEntry: (id: string, updates: Partial<Omit<DiaryEntry, "id" | "createdAt">>) => Promise<void>;
+  deleteDiaryEntry: (id: string) => Promise<void>;
 }
 
 const JournalContext = createContext<JournalContextValue | null>(null);
@@ -185,6 +191,7 @@ export function JournalProvider({ children }: { children: ReactNode }) {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
   const [accounts, setAccounts] = useState<TradingAccount[]>(DEFAULT_ACCOUNTS);
+  const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>(DEFAULT_DIARY_ENTRIES);
   const [activeAccountId, setActiveAccountIdState] = useState<string>(() => {
     try {
       return localStorage.getItem("tradelog_active_account") ?? "all";
@@ -193,6 +200,7 @@ export function JournalProvider({ children }: { children: ReactNode }) {
     }
   });
   const [accountRowMap, setAccountRowMap] = useState<Record<string, string>>({});
+  const [diaryRowMap, setDiaryRowMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   const setActiveAccountId = useCallback((id: string) => {
@@ -218,9 +226,11 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       const loadedAccounts = getLocalData<TradingAccount[]>(LOCAL_ACCOUNTS_KEY, DEFAULT_ACCOUNTS);
       const loadedRules = getLocalData<Rule[]>(LOCAL_RULES_KEY, DEFAULT_RULES);
       const loadedTrades = getLocalData<Trade[]>(LOCAL_TRADES_KEY, []);
+      const loadedDiary = getLocalData<DiaryEntry[]>(LOCAL_DIARY_KEY, DEFAULT_DIARY_ENTRIES);
       setAccounts(loadedAccounts);
       setRules(loadedRules);
       setTrades(loadedTrades);
+      setDiaryEntries(loadedDiary);
       setLoading(false);
       return;
     }
@@ -279,8 +289,48 @@ export function JournalProvider({ children }: { children: ReactNode }) {
 
     const primaryAccountId = loadedAccounts[0]?.id ?? "acc_main";
 
-    // 2. Parse normal rules (excluding account configurations)
-    const normalRuleRows = allRuleRows.filter((r) => !r.rule_text.startsWith("__ACCOUNT__:"));
+    // 2. Parse diary entries stored in rules table with prefix '__DIARY__:'
+    const diaryRows = allRuleRows.filter((r) => r.rule_text.startsWith("__DIARY__:"));
+    let loadedDiary: DiaryEntry[] = [];
+    const newDiaryRowMap: Record<string, string> = {};
+
+    if (diaryRows.length === 0) {
+      // Seed default diary entry for new user
+      const defaultEntry = DEFAULT_DIARY_ENTRIES[0];
+      if (defaultEntry) {
+        const { data: seededDiary } = await supabase
+          .from("rules")
+          .insert({
+            user_id: effectiveUser.id,
+            rule_text: `__DIARY__:${JSON.stringify(defaultEntry)}`,
+          })
+          .select("id")
+          .single();
+        loadedDiary = [defaultEntry];
+        if (seededDiary) {
+          newDiaryRowMap[defaultEntry.id] = seededDiary.id;
+        }
+      }
+    } else {
+      for (const row of diaryRows) {
+        try {
+          const jsonStr = row.rule_text.replace("__DIARY__:", "");
+          const parsed = JSON.parse(jsonStr) as DiaryEntry;
+          loadedDiary.push(parsed);
+          newDiaryRowMap[parsed.id] = row.id;
+        } catch {
+          // ignore corrupted diary row
+        }
+      }
+    }
+    loadedDiary.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    setDiaryEntries(loadedDiary);
+    setDiaryRowMap(newDiaryRowMap);
+
+    // 3. Parse normal rules (excluding account configurations and diary entries)
+    const normalRuleRows = allRuleRows.filter(
+      (r) => !r.rule_text.startsWith("__ACCOUNT__:") && !r.rule_text.startsWith("__DIARY__:"),
+    );
     let ruleItems = normalRuleRows;
 
     if (normalRuleRows.length === 0) {
@@ -293,7 +343,7 @@ export function JournalProvider({ children }: { children: ReactNode }) {
     }
     setRules(ruleItems.map((r) => ({ id: r.id, text: r.rule_text })));
 
-    // 3. Map trades with account attribution
+    // 4. Map trades with account attribution
     setTrades(((tradesRes.data ?? []) as TradeRow[]).map((row) => toTrade(row, primaryAccountId)));
     setLoading(false);
   }, []);
@@ -543,6 +593,96 @@ export function JournalProvider({ children }: { children: ReactNode }) {
     [rules],
   );
 
+  const addDiaryEntry = useCallback(
+    async (entryData: Omit<DiaryEntry, "id" | "createdAt" | "updatedAt">): Promise<DiaryEntry> => {
+      const effectiveUser = await getEffectiveUser();
+      const now = new Date().toISOString();
+      const newId = `diary_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      const newEntry: DiaryEntry = {
+        ...entryData,
+        id: newId,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      if (!effectiveUser || effectiveUser.isGuest) {
+        const next = [newEntry, ...diaryEntries];
+        setDiaryEntries(next);
+        setLocalData(LOCAL_DIARY_KEY, next);
+        return newEntry;
+      }
+
+      const { data: inserted, error } = await supabase
+        .from("rules")
+        .insert({
+          user_id: effectiveUser.id,
+          rule_text: `__DIARY__:${JSON.stringify(newEntry)}`,
+        })
+        .select("id")
+        .single();
+
+      if (error) throw error;
+      if (inserted) {
+        setDiaryRowMap((prev) => ({ ...prev, [newId]: inserted.id }));
+      }
+      setDiaryEntries((prev) => [newEntry, ...prev]);
+      return newEntry;
+    },
+    [diaryEntries],
+  );
+
+  const updateDiaryEntry = useCallback(
+    async (id: string, updates: Partial<Omit<DiaryEntry, "id" | "createdAt">>) => {
+      const existing = diaryEntries.find((d) => d.id === id);
+      if (!existing) throw new Error("Diary entry not found.");
+
+      const updated: DiaryEntry = {
+        ...existing,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const effectiveUser = await getEffectiveUser();
+      if (!effectiveUser || effectiveUser.isGuest) {
+        const next = diaryEntries.map((d) => (d.id === id ? updated : d));
+        setDiaryEntries(next);
+        setLocalData(LOCAL_DIARY_KEY, next);
+        return;
+      }
+
+      const rowId = diaryRowMap[id];
+      if (rowId) {
+        const { error } = await supabase
+          .from("rules")
+          .update({ rule_text: `__DIARY__:${JSON.stringify(updated)}` })
+          .eq("id", rowId);
+        if (error) throw error;
+      }
+      setDiaryEntries((prev) => prev.map((d) => (d.id === id ? updated : d)));
+    },
+    [diaryEntries, diaryRowMap],
+  );
+
+  const deleteDiaryEntry = useCallback(
+    async (id: string) => {
+      const effectiveUser = await getEffectiveUser();
+      if (!effectiveUser || effectiveUser.isGuest) {
+        const next = diaryEntries.filter((d) => d.id !== id);
+        setDiaryEntries(next);
+        setLocalData(LOCAL_DIARY_KEY, next);
+        return;
+      }
+
+      const rowId = diaryRowMap[id];
+      if (rowId) {
+        const { error } = await supabase.from("rules").delete().eq("id", rowId);
+        if (error) throw error;
+      }
+      setDiaryEntries((prev) => prev.filter((d) => d.id !== id));
+    },
+    [diaryEntries, diaryRowMap],
+  );
+
   const isDemo = !loading && trades.length === 0;
 
   const currentTrades = isDemo ? SAMPLE_TRADES : trades;
@@ -572,6 +712,10 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       addAccount,
       updateAccount,
       deleteAccount,
+      diaryEntries,
+      addDiaryEntry,
+      updateDiaryEntry,
+      deleteDiaryEntry,
     }),
     [
       currentTrades,
@@ -591,6 +735,10 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       addAccount,
       updateAccount,
       deleteAccount,
+      diaryEntries,
+      addDiaryEntry,
+      updateDiaryEntry,
+      deleteDiaryEntry,
     ],
   );
 

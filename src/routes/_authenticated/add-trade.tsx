@@ -571,7 +571,12 @@ function AddTrade() {
             <h2 className="text-lg font-semibold">Chart Screenshots</h2>
             <ChartUploader value={charts} onChange={setCharts} onView={setLightbox} />
           </Card>
-          <ChartLightbox paths={charts} index={lightbox} onClose={() => setLightbox(null)} />
+          <ChartLightbox
+            paths={charts}
+            index={lightbox}
+            onClose={() => setLightbox(null)}
+            onDelete={(path) => setCharts(charts.filter((p) => p !== path))}
+          />
         </div>
 
         <div className="space-y-4">

@@ -6,7 +6,7 @@ import { createGeminiProvider } from "./ai-gateway.server";
 
 const CoachInput = z.object({
   question: z.string().min(1).max(2000),
-  tradeSummary: z.string().min(1).max(30000),
+  tradeSummary: z.string().min(1).max(100000),
   history: z
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(4000) }))
     .max(20)
@@ -98,6 +98,15 @@ C. KEY HIGH-IMPACT MACRO EVENTS (AUTUMN & WINTER 2026 / 2027):
 D. MACRO RISK GUIDANCE FOR ACTIVE TRADERS:
 - Advise active traders on managing volatility: market makers pull liquidity 15 minutes before 8:30 AM ET (CPI/NFP) or 2:00 PM ET (FOMC), leading to massive slippage and liquidation wicks in crypto (BTC/ETH) and index futures.
 - Recommend flattening or derisking high-leverage trades ahead of these prints, and waiting for Chair Warsh's 2:30 PM ET press conference to establish direction.
+
+5. TRADER'S PERSONAL DIARY & PSYCHOLOGY ENTRIES:
+- You have full, unrestricted access to the trader's personal Diary & Thought Journal entries (located below under "TRADER DIARY & THOUGHT LOGS").
+- These entries contain their unedited thoughts, emotions, market psychology, daily mindset, frustrations, lessons learned, and discipline reflections recorded for specific dates and days.
+- When the trader asks about their thoughts, mindset, emotions, past entries, or asks you to reflect on what they wrote in their diary:
+  * YOU MUST CAREFULLY READ and reference their exact written diary thoughts.
+  * Quote their own words and cite the specific Day and Date of their entries.
+  * Connect their written mindset and emotional state directly with their trade executions and performance (e.g., how their fear, overconfidence, patience, or fatigue influenced trade outcomes).
+  * Act as a seasoned, empathetic yet firm trading psychologist and mentor.
 
 FORMATTING & STYLE:
 - Use clean, punchy markdown with bold headers and bullet points.

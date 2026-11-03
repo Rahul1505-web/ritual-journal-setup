@@ -210,3 +210,66 @@
     font-family: var(--font-mono);
   }
 }
+
+/* Authentic Diary Lined Notebook Paper */
+.font-handwriting {
+  font-family: "Caveat", cursive;
+}
+.font-diary-serif {
+  font-family: "Newsreader", "Playfair Display", Georgia, serif;
+}
+
+/* Parchment page bases */
+.diary-page-ivory {
+  background-color: #fbf7ee;
+  color: #1c1917;
+}
+
+.diary-page-dark {
+  background-color: #161513;
+  color: #f5f5f4;
+}
+
+/* Ruled paper lined background applied directly to writing areas */
+.diary-ruled-textarea-ivory {
+  background-color: transparent;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 35px,
+    #cbd5e1 35px,
+    #cbd5e1 36px
+  );
+  background-size: 100% 36px;
+  background-attachment: local;
+  line-height: 36px;
+}
+
+.diary-ruled-textarea-dark {
+  background-color: transparent;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 35px,
+    rgba(255, 255, 255, 0.1) 35px,
+    rgba(255, 255, 255, 0.1) 36px
+  );
+  background-size: 100% 36px;
+  background-attachment: local;
+  line-height: 36px;
+}
+
+/* Authentic Highlighter marker strokes */
+.diary-editor mark,
+.diary-editor [style*="background-color"] {
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin: 0 1px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  display: inline;
+}
+
+.diary-editor:focus {
+  outline: none;
+}
