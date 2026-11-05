@@ -78,6 +78,129 @@ export const Route = createFileRoute("/_authenticated/diary")({
   component: DiaryPage,
 });
 
+// ── SCREENSHOT CARD WITH LOCAL CAPTION STATE ──
+// Isolates caption typing so keystrokes remain instantaneous with zero cursor jumping or text resets
+interface ScreenshotCardProps {
+  screenshot: DiaryScreenshot;
+  index: number;
+  displayUrl: string;
+  paperTheme: "ivory" | "dark";
+  onZoom: () => void;
+  onDelete: () => void;
+  onCaptionChange: (id: string, newCaption: string) => void;
+}
+
+function ScreenshotCard({
+  screenshot,
+  index,
+  displayUrl,
+  paperTheme,
+  onZoom,
+  onDelete,
+  onCaptionChange,
+}: ScreenshotCardProps) {
+  const [localCaption, setLocalCaption] = useState(screenshot.caption || "");
+  const isFocusedRef = useRef(false);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync external changes (e.g. switching diary pages) only when user is NOT actively typing
+  useEffect(() => {
+    if (!isFocusedRef.current) {
+      setLocalCaption(screenshot.caption || "");
+    }
+  }, [screenshot.id, screenshot.caption]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setLocalCaption(val); // Instant local state update -> caret position never jumps!
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    // Debounce pushing up to parent so parent re-renders don't interrupt typing
+    debounceRef.current = setTimeout(() => {
+      onCaptionChange(screenshot.id, val);
+    }, 300);
+  };
+
+  const handleFocus = () => {
+    isFocusedRef.current = true;
+  };
+
+  const handleBlur = () => {
+    isFocusedRef.current = false;
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    onCaptionChange(screenshot.id, localCaption);
+  };
+
+  return (
+    <div
+      className={cn(
+        "relative rounded-xl border p-2.5 transition-all shadow-md group flex flex-col justify-between",
+        paperTheme === "ivory"
+          ? "bg-white border-stone-200 text-stone-900"
+          : "bg-stone-900 border-stone-800 text-stone-100",
+      )}
+    >
+      {/* Washi tape decorative strip */}
+      <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-14 h-4 bg-amber-100/80 border border-amber-300/40 rounded-xs shadow-xs transform -rotate-1 pointer-events-none" />
+
+      {/* Image container */}
+      <div
+        className="relative cursor-pointer overflow-hidden rounded-lg bg-black/10 aspect-video flex items-center justify-center group/img"
+        onClick={onZoom}
+      >
+        <img
+          src={displayUrl}
+          alt={localCaption || `Screenshot ${index + 1}`}
+          className="w-full h-full object-cover transition-transform duration-300 group-hover/img:scale-105"
+        />
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white">
+          <Maximize2 className="size-4" />
+          <span className="text-[11px] font-medium">Zoom Chart</span>
+        </div>
+      </div>
+
+      {/* Caption input & delete */}
+      <div className="mt-2 flex items-center gap-1.5">
+        <input
+          type="text"
+          value={localCaption}
+          onChange={handleInputChange}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          placeholder="Chart caption (e.g. 15m breakout setup)..."
+          className={cn(
+            "flex-1 text-xs bg-transparent border-b border-dashed focus:border-solid focus:outline-none px-1 py-0.5 transition-colors",
+            paperTheme === "ivory"
+              ? "border-stone-300 text-stone-800 placeholder:text-stone-400 focus:border-stone-700"
+              : "border-stone-700 text-stone-200 placeholder:text-stone-500 focus:border-stone-400",
+          )}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onDelete}
+          className="size-6 text-stone-400 hover:text-rose-500 hover:bg-rose-500/10"
+          title="Remove screenshot"
+        >
+          <Trash2 className="size-3" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function DiaryPage() {
   const {
     diaryEntries,
@@ -119,6 +242,9 @@ function DiaryPage() {
   const [mood, setMood] = useState<DiaryMood>("Disciplined");
   const [session, setSession] = useState<DiarySession>("Pre-Market");
   const [screenshots, setScreenshots] = useState<DiaryScreenshot[]>([]);
+  const screenshotsRef = useRef<DiaryScreenshot[]>([]);
+  screenshotsRef.current = screenshots;
+  const currentLoadedEntryIdRef = useRef<string | null>(null);
 
   // UI styling states
   const [paperTheme, setPaperTheme] = useState<"ivory" | "dark">("ivory");
@@ -160,24 +286,31 @@ function DiaryPage() {
   // Synchronize inputs when active entry changes or updates
   useEffect(() => {
     if (activeEntry) {
-      setSelectedEntryId(activeEntry.id);
-      setEntryAccountId(
-        activeEntry.accountId ||
-          (activeAccountId !== "all" ? activeAccountId : accounts[0]?.id ?? "acc_main"),
-      );
-      setDay(activeEntry.day || getDayNameFromDate(activeEntry.date));
-      setDate(activeEntry.date);
-      setTitle(activeEntry.title || "");
-      setContent(activeEntry.content || "");
-      setMood(activeEntry.mood || "Disciplined");
-      setSession(activeEntry.session || "Pre-Market");
-      setScreenshots(activeEntry.screenshots || []);
-      setSaveStatus("saved");
-      setAiAnalysis(null);
-      setShowAiNotes(false);
-      setFloatingToolbar(null);
+      const isSwitchingEntry = currentLoadedEntryIdRef.current !== activeEntry.id;
+      currentLoadedEntryIdRef.current = activeEntry.id;
+
+      if (isSwitchingEntry) {
+        setSelectedEntryId(activeEntry.id);
+        setEntryAccountId(
+          activeEntry.accountId ||
+            (activeAccountId !== "all" ? activeAccountId : accounts[0]?.id ?? "acc_main"),
+        );
+        setDay(activeEntry.day || getDayNameFromDate(activeEntry.date));
+        setDate(activeEntry.date);
+        setTitle(activeEntry.title || "");
+        setContent(activeEntry.content || "");
+        setMood(activeEntry.mood || "Disciplined");
+        setSession(activeEntry.session || "Pre-Market");
+        setScreenshots(activeEntry.screenshots || []);
+        screenshotsRef.current = activeEntry.screenshots || [];
+        setSaveStatus("saved");
+        setAiAnalysis(null);
+        setShowAiNotes(false);
+        setFloatingToolbar(null);
+      }
     } else {
-      // If store is completely empty, create an initial blank sheet for today
+      currentLoadedEntryIdRef.current = null;
+      setSelectedEntryId(null);
       setEntryAccountId(
         activeAccountId !== "all" ? activeAccountId : accounts[0]?.id ?? "acc_main",
       );
@@ -188,10 +321,11 @@ function DiaryPage() {
       setMood("Disciplined");
       setSession("Pre-Market");
       setScreenshots([]);
+      screenshotsRef.current = [];
       setSaveStatus("saved");
       setFloatingToolbar(null);
     }
-  }, [activeEntry?.id, activeEntry?.updatedAt, activeAccountId]);
+  }, [activeEntry?.id, activeAccountId]);
 
   // Synchronize editor DOM innerHTML safely:
   // - Runs on entering viewMode === "entry" or switching activeEntry
@@ -375,8 +509,9 @@ function DiaryPage() {
       }
     }
     const plainText = stripDiaryHtml(editorHtml);
+    const currentScreenshots = screenshotsRef.current;
 
-    if (!plainText && !title.trim() && screenshots.length === 0) {
+    if (!plainText && !title.trim() && currentScreenshots.length === 0) {
       if (showToast) toast.info("Write your thoughts or add a screenshot before saving.");
       return;
     }
@@ -392,7 +527,7 @@ function DiaryPage() {
           content: editorHtml,
           mood,
           session,
-          screenshots,
+          screenshots: currentScreenshots,
         });
         setSaveStatus("saved");
         if (showToast) toast.success("Diary page saved to journal!");
@@ -405,9 +540,10 @@ function DiaryPage() {
           content: editorHtml,
           mood,
           session,
-          screenshots,
+          screenshots: currentScreenshots,
         });
         setSelectedEntryId(created.id);
+        currentLoadedEntryIdRef.current = created.id;
         lastLoadedIdRef.current = created.id;
         setSaveStatus("saved");
         if (showToast) toast.success("New diary entry created!");
@@ -423,6 +559,7 @@ function DiaryPage() {
   const handleOpenTopic = (entryId: string) => {
     setSelectedEntryId(entryId);
     lastLoadedIdRef.current = null;
+    currentLoadedEntryIdRef.current = null;
     setViewMode("entry");
   };
 
@@ -448,6 +585,7 @@ function DiaryPage() {
         screenshots: [],
       });
       setSelectedEntryId(created.id);
+      currentLoadedEntryIdRef.current = created.id;
       lastLoadedIdRef.current = created.id;
       setEntryAccountId(targetAccId);
       setDay(todayDay);
@@ -457,6 +595,7 @@ function DiaryPage() {
       setMood("Disciplined");
       setSession("Pre-Market");
       setScreenshots([]);
+      screenshotsRef.current = [];
       setSaveStatus("saved");
       setAiAnalysis(null);
       setShowAiNotes(false);
@@ -490,9 +629,11 @@ function DiaryPage() {
         screenshots: [],
       });
       setSelectedEntryId(created.id);
+      currentLoadedEntryIdRef.current = created.id;
       lastLoadedIdRef.current = created.id;
       setContent("");
       setScreenshots([]);
+      screenshotsRef.current = [];
       setSaveStatus("saved");
       setAiAnalysis(null);
       setShowAiNotes(false);
@@ -583,6 +724,7 @@ function DiaryPage() {
       };
       const updatedScreenshots = [...screenshots, newScreenshot];
       setScreenshots(updatedScreenshots);
+      screenshotsRef.current = updatedScreenshots;
 
       if (activeEntry) {
         await updateDiaryEntry(activeEntry.id, { screenshots: updatedScreenshots });
@@ -613,19 +755,21 @@ function DiaryPage() {
     }
   };
 
-  // Update caption of a screenshot
-  const handleUpdateCaption = async (id: string, newCaption: string) => {
-    const updated = screenshots.map((s) => (s.id === id ? { ...s, caption: newCaption } : s));
-    setScreenshots(updated);
-    if (activeEntry) {
-      await updateDiaryEntry(activeEntry.id, { screenshots: updated });
-    }
+  // Update caption of a screenshot smoothly without triggering immediate store mutations
+  const handleUpdateCaption = (id: string, newCaption: string) => {
+    setScreenshots((prev) => {
+      const updated = prev.map((s) => (s.id === id ? { ...s, caption: newCaption } : s));
+      screenshotsRef.current = updated;
+      return updated;
+    });
+    markDirty();
   };
 
   // Delete a screenshot from the page
   const handleDeleteScreenshot = async (id: string) => {
     const updated = screenshots.filter((s) => s.id !== id);
     setScreenshots(updated);
+    screenshotsRef.current = updated;
     if (activeEntry) {
       await updateDiaryEntry(activeEntry.id, { screenshots: updated });
     }
@@ -1557,60 +1701,16 @@ function DiaryPage() {
                       {screenshots.map((s, sIdx) => {
                         const displayUrl = signedUrls[s.url] || s.url;
                         return (
-                          <div
+                          <ScreenshotCard
                             key={s.id}
-                            className={cn(
-                              "relative rounded-xl border p-2.5 transition-all shadow-md group flex flex-col justify-between",
-                              paperTheme === "ivory"
-                                ? "bg-white border-stone-200 text-stone-900"
-                                : "bg-stone-900 border-stone-800 text-stone-100",
-                            )}
-                          >
-                            {/* Washi tape decorative strip */}
-                            <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-14 h-4 bg-amber-100/80 border border-amber-300/40 rounded-xs shadow-xs transform -rotate-1 pointer-events-none" />
-
-                            {/* Image container */}
-                            <div
-                              className="relative cursor-pointer overflow-hidden rounded-lg bg-black/10 aspect-video flex items-center justify-center group/img"
-                              onClick={() => setZoomImage(s.url)}
-                            >
-                              <img
-                                src={displayUrl}
-                                alt={s.caption || `Screenshot ${sIdx + 1}`}
-                                className="w-full h-full object-cover transition-transform duration-300 group-hover/img:scale-105"
-                              />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white">
-                                <Maximize2 className="size-4" />
-                                <span className="text-[11px] font-medium">Zoom Chart</span>
-                              </div>
-                            </div>
-
-                            {/* Caption input & delete */}
-                            <div className="mt-2 flex items-center gap-1.5">
-                              <input
-                                type="text"
-                                value={s.caption || ""}
-                                onChange={(e) => void handleUpdateCaption(s.id, e.target.value)}
-                                placeholder="Chart caption (e.g. 15m breakout setup)..."
-                                className={cn(
-                                  "flex-1 text-xs bg-transparent border-b border-dashed focus:border-solid focus:outline-none px-1 py-0.5",
-                                  paperTheme === "ivory"
-                                    ? "border-stone-300 text-stone-800 placeholder:text-stone-400 focus:border-stone-700"
-                                    : "border-stone-700 text-stone-200 placeholder:text-stone-500 focus:border-stone-400",
-                                )}
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => void handleDeleteScreenshot(s.id)}
-                                className="size-6 text-stone-400 hover:text-rose-500 hover:bg-rose-500/10"
-                                title="Remove screenshot"
-                              >
-                                <Trash2 className="size-3" />
-                              </Button>
-                            </div>
-                          </div>
+                            screenshot={s}
+                            index={sIdx}
+                            displayUrl={displayUrl}
+                            paperTheme={paperTheme}
+                            onZoom={() => setZoomImage(s.url)}
+                            onDelete={() => void handleDeleteScreenshot(s.id)}
+                            onCaptionChange={handleUpdateCaption}
+                          />
                         );
                       })}
                     </div>
