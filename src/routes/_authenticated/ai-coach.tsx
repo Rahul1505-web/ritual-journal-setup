@@ -696,11 +696,19 @@ function AiCoach() {
   const buildSummary = (query: string) => {
     const s = stats(trades);
     const isAudit = isTradeOrDiaryAudit(query);
+    const now = new Date();
+    const liveDateStr = now.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const liveTimeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
     // Fast compact profile for general chat (avoids token bloat, delivers sub-5s response)
     if (!isAudit) {
       return [
-        `CURRENT SYSTEM DATE: Saturday, October 17, 2026`,
+        `CURRENT SYSTEM LIVE DATE: ${liveDateStr} (${liveTimeStr})`,
         `Trader Quick Profile: ${s.count} total trades logged, net ${signedMoney(s.total)}, win rate ${s.winRate.toFixed(1)}% (${s.wins}W/${s.losses}L).`,
         `Active Rules: ${rules.length > 0 ? rules.map((r) => r.text).join(" | ") : "No rules logged yet"}`,
       ].join("\n");
@@ -710,7 +718,7 @@ function AiCoach() {
     const sortedTrades = sortByDate(trades).reverse();
     const recent = sortedTrades.slice(0, 20);
     return [
-      `CURRENT SYSTEM DATE: Saturday, October 17, 2026`,
+      `CURRENT SYSTEM LIVE DATE: ${liveDateStr} (${liveTimeStr})`,
       `Overall Journal Stats: ${s.count} total trades, net ${signedMoney(s.total)}, win rate ${s.winRate.toFixed(1)}% (${s.wins}W/${s.losses}L).`,
       `Avg win ${money(s.avgWin)}, avg loss ${money(s.avgLoss)}, R:R 1:${s.rr.toFixed(2)}, best ${money(s.best)}, worst ${money(s.worst)}.`,
       `Current streak: ${s.streak} ${s.streakWin ? "wins" : "losses"}.`,

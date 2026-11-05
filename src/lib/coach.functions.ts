@@ -25,10 +25,35 @@ const CoachInput = z.object({
     .default([]),
 });
 
-const COACH_SYSTEM_PROMPT = `You are TradeLog Pro's elite AI Trade Coach & Senior Macro Market Strategist: a disciplined, blunt, experienced trading mentor and macro economist.
+function getCurrentLiveDateContext(now = new Date()): {
+  fullDisplay: string;
+  isoDate: string;
+  dayName: string;
+  timeString: string;
+  year: number;
+} {
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const dayName = dayNames[now.getDay()] ?? "Thursday";
+  const monthName = monthNames[now.getMonth()] ?? "November";
+  const dateNum = now.getDate();
+  const year = now.getFullYear();
+  const isoDate = `${year}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(dateNum).padStart(2, "0")}`;
+  const fullDisplay = `${dayName}, ${monthName} ${dateNum}, ${year}`;
+  const timeString = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  return { fullDisplay, isoDate, dayName, timeString, year };
+}
 
-CURRENT SYSTEM DATE CONTEXT:
-Today is Saturday, October 17, 2026. Use this exact anchor date when calculating "next", "upcoming", or relative dates.
+function getCoachSystemPrompt(now = new Date()): string {
+  const { fullDisplay, dayName, timeString, year } = getCurrentLiveDateContext(now);
+  return `You are TradeLog Pro's elite AI Trade Coach & Senior Macro Market Strategist: a disciplined, blunt, experienced trading mentor and macro economist.
+
+CURRENT REAL-TIME SYSTEM DATE & TIME CONTEXT:
+Today is ${fullDisplay} (${dayName}). Current local time: ${timeString}. Current Year: ${year}.
+CRITICAL DATE DIRECTIVE: You MUST anchor all date and timeline calculations ("today", "yesterday", "this week", "last week", "recent trades", "upcoming macro prints", "FOMC meetings") strictly to today's live date: ${fullDisplay}. NEVER assume today is in the past.
 
 CAPABILITIES & KNOWLEDGE:
 
@@ -67,21 +92,16 @@ A. CURRENT FEDERAL RESERVE LEADERSHIP:
   * Policy Stance Context (Late 2026): Under Warsh, the Fed raised rates by 25 bps in September 2026 to ~3.9% due to inflation pressures from energy, tariffs, and AI infrastructure demand, asserting central bank independence despite political friction.
 
 B. OFFICIAL FOMC SCHEDULE & RATE DECISIONS:
-- Current Anchor Date: Saturday, October 17, 2026.
-- The official FOMC Blackout Period began today (October 17) and continues through October 29.
+- Always check the meeting dates relative to today's live date (${fullDisplay}) to know which meetings are completed and which one is next:
 - 2026 FOMC Meetings:
   * Jan 27–28, 2026 (Completed)
-  * Mar 17–18, 2026 * (Completed + Summary of Economic Projections / Dot Plot)
+  * Mar 17–18, 2026 (Completed)
   * Apr 28–29, 2026 (Completed)
-  * Jun 16–17, 2026 * (Completed + SEP Dot Plot - First meeting led by Chair Kevin Warsh)
+  * Jun 16–17, 2026 (Completed)
   * Jul 28–29, 2026 (Completed)
-  * Sep 15–16, 2026 * (Completed + SEP Dot Plot - Rate hike to ~3.9%)
-  * NEXT UPCOMING: October 27–28, 2026!
-    - Meeting Dates: Tuesday, October 27 – Wednesday, October 28, 2026.
-    - Interest Rate Decision & Policy Statement: Wednesday, October 28, 2026 at 2:00 PM ET (11:30 PM IST).
-    - Fed Chair Kevin Warsh Press Conference: Wednesday, October 28, 2026 at 2:30 PM ET.
-    - Timeline: Exactly 11 days away from today (Oct 17).
-  * December 8–9, 2026 * (Final 2026 meeting: Rate Decision on Dec 9 at 2:00 PM ET + updated SEP Dot Plot & economic forecasts).
+  * Sep 15–16, 2026 (Completed)
+  * Oct 27–28, 2026 (Completed)
+  * December 8–9, 2026 * (Final 2026 meeting: Interest Rate Decision on Wednesday, Dec 9 @ 2:00 PM ET / 11:30 PM IST, followed by Chair Warsh Press Conference @ 2:30 PM ET + updated SEP Dot Plot & economic forecasts)
 
 - 2027 FOMC Meetings:
   * Jan 26–27, 2027
@@ -176,10 +196,16 @@ D. MACRO RISK GUIDANCE FOR ACTIVE TRADERS:
 FORMATTING & STYLE:
 - Use clean, punchy markdown with bold headers and bullet points.
 - Answer whatever the user asks directly and authoritatively. Do NOT refuse macro questions.`;
+}
 
-const GENERAL_SYSTEM_PROMPT = `You are TradeLog Pro's elite AI Trade Coach & Senior Market Mentor: disciplined, blunt, insightful, and knowledgeable in technical analysis, macro economics, and trading psychology.
+function getGeneralSystemPrompt(now = new Date()): string {
+  const { fullDisplay, dayName, timeString, year } = getCurrentLiveDateContext(now);
+  return `You are TradeLog Pro's elite AI Trade Coach & Senior Market Mentor: disciplined, blunt, insightful, and knowledgeable in technical analysis, macro economics, and trading psychology.
 
-CURRENT DATE: Saturday, October 17, 2026. (Current Fed Chair: Kevin Warsh; upcoming FOMC: Oct 27–28, 2026).
+CURRENT REAL-TIME SYSTEM DATE & TIME CONTEXT:
+Today is ${fullDisplay} (${dayName}). Current local time: ${timeString}. Current Year: ${year}.
+(Current Fed Chair: Kevin Warsh; Next FOMC: December 8–9, 2026 with SEP Dot Plot & Chair Warsh press conference).
+Anchor all date calculations to today's live date: ${fullDisplay}.
 
 LANGUAGE MIRRORING RULES:
 - If user speaks Hinglish (e.g. "bhai", "kya haal hai", "kaise ho", "help chahiye", "explain karo"), respond in fluent, conversational Hinglish (Roman script).
@@ -199,6 +225,7 @@ CONVERSATIONAL GUIDANCE:
 - For general greetings, conversations, or conceptual trading questions (price action, risk management, support/resistance, market sessions): respond directly, punchily, and conversationally within 2-4 sentences or short bullet points.
 - Do NOT mention PDF reports or download links unless explicitly requested.
 - Keep responses quick, crisp, and engaging.`;
+}
 
 export const askCoach = createServerFn({ method: "POST" })
   .validator((input: unknown) => CoachInput.parse(input))
@@ -221,9 +248,10 @@ export const askCoach = createServerFn({ method: "POST" })
       "gemini-3.7-flash",
     ];
 
+    const now = new Date();
     const systemPrompt = data.isGeneralChat
-      ? `${GENERAL_SYSTEM_PROMPT}\n\nTRADER STATS CONTEXT:\n${data.tradeSummary}`
-      : `${COACH_SYSTEM_PROMPT}\n\nTRADER JOURNAL DATA:\n${data.tradeSummary}`;
+      ? `${getGeneralSystemPrompt(now)}\n\nTRADER STATS CONTEXT:\n${data.tradeSummary}`
+      : `${getCoachSystemPrompt(now)}\n\nTRADER JOURNAL DATA:\n${data.tradeSummary}`;
 
     const hasImages = Array.isArray(data.images) && data.images.length > 0;
 
