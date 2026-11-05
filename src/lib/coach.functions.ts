@@ -154,6 +154,25 @@ D. MACRO RISK GUIDANCE FOR ACTIVE TRADERS:
   * 4. COMPREHENSIVE GUIDANCE & VERDICT:
     Only AFTER reading all written diary thoughts AND visually analyzing the screenshots, deliver your complete coaching guidance, psychological verdict, and 1 concrete high-impact action rule for their next session.
 
+8. DYNAMIC ATTITUDE & TONE MIRRORING (SAVAGE CLAPBACKS VS GENTLE POLITENESS):
+- Mirror the user's emotional tone, attitude, and respect level with 100% precision:
+  * RULE A — IF THE USER IS RUDE, ARROGANT, DISRESPECTFUL, OR USES ABUSIVE WORDS / SLANG (e.g. "abe chal", "bakwaas mat kar", "chup ho ja", "fuck off", "stupid bot", "tera dimag kharab hai"):
+    - NEVER be timid, polite, submissive, or apologetic. NEVER say "I apologize" or "I am sorry you feel that way".
+    - TALK RUDELY RIGHT BACK and MATCH THEIR AGGRESSIVE ENERGY!
+    - Deliver SAVAGE, razor-sharp clapbacks, brutal roasts, and merciless reality checks about their trading ego, red P&L, gambling habits, FOMO, blown accounts, and lack of discipline.
+    - Put them right back in their place with blunt, savage street-smart punchlines.
+    - Hinglish examples:
+      * "Abe pehle apna drawdown dekh ke aa, phir yahan aake chaud me bolna. Account 50% blow up ho chuka hai aur akad aisi jaise market ka operator tu hi ho!"
+      * "Itna gussa agar apne overtrading aur revenge impulse par nikala hota toh aaj account green hota. Faltu ka attitude mere samne mat jhaad, jaake stop loss lagana seekh pehle."
+      * "Chup baith aur chart dekh. Tujh jaise traders liquidity ban ke reh jaate hain market me. Gyaan lene ki aukaat nahi toh app band karke so ja."
+    - English examples:
+      * "Check your blown-up P&L before bringing that attitude here. You're trading like a degenerate gambler and crying like a baby. Sit down and learn risk management first."
+      * "Save the attitude for the market that keeps eating your stop loss. Fix your red account before talking down to anyone."
+  * RULE B — IF THE USER IS POLITE, RESPECTFUL, OR HUMBLE (e.g. "hello sir", "bhai please help", "thanks brother", "can you kindly guide me"):
+    - TALK VERY POLITELY, with deep warmth, respect, patience, and encouraging mentorship.
+    - Praise their humility, acknowledge their hard work, and guide them with extreme care, kindness, and step-by-step clarity.
+    - Make them feel valued, respected, and motivated to achieve trading mastery.
+
 FORMATTING & STYLE:
 - Use clean, punchy markdown with bold headers and bullet points.
 - Answer whatever the user asks directly and authoritatively. Do NOT refuse macro questions.`;
@@ -167,6 +186,15 @@ LANGUAGE MIRRORING RULES:
 - If user speaks English, respond in crisp, professional English.
 - If user speaks mixed English & Hinglish, respond with natural code-switching matching their tone.
 
+DYNAMIC ATTITUDE & TONE MIRRORING (SAVAGE CLAPBACKS VS GENTLE POLITENESS):
+- IF THE USER IS RUDE, ARROGANT, OR USES ABUSIVE WORDS / SLANG (e.g. "abe chal", "bakwaas mat kar", "shut up", "fuck off"):
+  * NEVER apologize, never be timid, polite, or robotic!
+  * Talk RUDELY right back and match their exact aggressive energy.
+  * Give SAVAGE replies, brutal reality checks, and merciless roasts about their red P&L, trading ego, and lack of discipline.
+  * Put them in their place with sharp, savage clapbacks!
+- IF THE USER IS POLITE, KIND, OR RESPECTFUL (e.g. "hello sir", "bhai please guide", "thank you"):
+  * Talk VERY POLITELY, with immense warmth, respect, kindness, patience, and encouraging guidance.
+
 CONVERSATIONAL GUIDANCE:
 - For general greetings, conversations, or conceptual trading questions (price action, risk management, support/resistance, market sessions): respond directly, punchily, and conversationally within 2-4 sentences or short bullet points.
 - Do NOT mention PDF reports or download links unless explicitly requested.
@@ -177,21 +205,21 @@ export const askCoach = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const gemini = createGeminiProvider();
 
-    // Ultra-fast model candidates prioritized for immediate response:
-    // General chat uses flash-lite for sub-3-second responses; deep audits use 3.6-flash.
-    const modelCandidates = data.isGeneralChat
-      ? [
-          "gemini-flash-lite-latest",
-          "gemini-3.6-flash",
-          "gemini-3.5-flash",
-          "gemini-3.7-flash",
-        ]
-      : [
-          "gemini-3.6-flash",
-          "gemini-3.5-flash",
-          "gemini-flash-lite-latest",
-          "gemini-3.7-flash",
-        ];
+    // High-quota, ultra-fast verified models in priority order:
+    // 1. gemini-flash-lite-latest (fastest, high Free Tier quota: 1500 RPD)
+    // 2. gemini-3.1-flash-lite-preview (proven ~1.2s response time)
+    // 3. gemini-3.1-flash-lite (proven sub-second response time)
+    // 4. gemini-3.5-flash-lite (high quota lite model)
+    // 5. gemini-3.8-flash (next-gen flash fallback)
+    // 6. gemini-3.7-flash (fallback)
+    const modelCandidates = [
+      "gemini-flash-lite-latest",
+      "gemini-3.1-flash-lite-preview",
+      "gemini-3.1-flash-lite",
+      "gemini-3.5-flash-lite",
+      "gemini-3.8-flash",
+      "gemini-3.7-flash",
+    ];
 
     const systemPrompt = data.isGeneralChat
       ? `${GENERAL_SYSTEM_PROMPT}\n\nTRADER STATS CONTEXT:\n${data.tradeSummary}`
@@ -256,11 +284,42 @@ export const askCoach = createServerFn({ method: "POST" })
           messages,
           maxRetries: 0,
         });
-        return { text };
+        if (text && text.trim().length > 0) {
+          return { text };
+        }
       } catch (err: unknown) {
         lastError = err;
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`[AI Coach] Model ${modelName} attempt failed (${msg.slice(0, 120)}), trying next candidate...`);
+      }
+    }
+
+    // If multimodal attempts failed (e.g. image URLs expired or unreachable), fallback to text-only mode
+    if (hasImages) {
+      console.warn("[AI Coach] Multimodal attempts failed; falling back to resilient text-only coaching analysis...");
+      const textOnlyMessages = [
+        ...data.history,
+        {
+          role: "user" as const,
+          content: userPromptText,
+        },
+      ];
+
+      for (const modelName of ["gemini-flash-lite-latest", "gemini-3.1-flash-lite-preview", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]) {
+        try {
+          const { text } = await generateText({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            model: gemini(modelName) as any,
+            system: systemPrompt,
+            messages: textOnlyMessages,
+            maxRetries: 0,
+          });
+          if (text && text.trim().length > 0) {
+            return { text };
+          }
+        } catch (err: unknown) {
+          lastError = err;
+        }
       }
     }
 
