@@ -84,6 +84,7 @@ interface JournalContextValue {
   updateAccount: (id: string, updates: Partial<TradingAccount>) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
   diaryEntries: DiaryEntry[];
+  filteredDiaryEntries: DiaryEntry[];
   addDiaryEntry: (entry: Omit<DiaryEntry, "id" | "createdAt" | "updatedAt">) => Promise<DiaryEntry>;
   updateDiaryEntry: (id: string, updates: Partial<Omit<DiaryEntry, "id" | "createdAt">>) => Promise<void>;
   deleteDiaryEntry: (id: string) => Promise<void>;
@@ -598,7 +599,9 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       const effectiveUser = await getEffectiveUser();
       const now = new Date().toISOString();
       const newId = `diary_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      const fallbackAccount = activeAccountId !== "all" ? activeAccountId : accounts[0]?.id ?? "acc_main";
       const newEntry: DiaryEntry = {
+        accountId: entryData.accountId || fallbackAccount,
         ...entryData,
         id: newId,
         createdAt: now,
@@ -628,7 +631,7 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       setDiaryEntries((prev) => [newEntry, ...prev]);
       return newEntry;
     },
-    [diaryEntries],
+    [diaryEntries, activeAccountId, accounts],
   );
 
   const updateDiaryEntry = useCallback(
@@ -693,6 +696,12 @@ export function JournalProvider({ children }: { children: ReactNode }) {
     return currentTrades.filter((t) => (t.accountId ?? defaultAccId) === activeAccountId);
   }, [currentTrades, activeAccountId, accounts]);
 
+  const filteredDiaryEntries = useMemo(() => {
+    if (activeAccountId === "all") return diaryEntries;
+    const defaultAccId = accounts[0]?.id ?? "acc_main";
+    return diaryEntries.filter((d) => (d.accountId ?? defaultAccId) === activeAccountId);
+  }, [diaryEntries, activeAccountId, accounts]);
+
   const value = useMemo(
     () => ({
       trades: currentTrades,
@@ -713,6 +722,7 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       updateAccount,
       deleteAccount,
       diaryEntries,
+      filteredDiaryEntries,
       addDiaryEntry,
       updateDiaryEntry,
       deleteDiaryEntry,
@@ -736,6 +746,7 @@ export function JournalProvider({ children }: { children: ReactNode }) {
       updateAccount,
       deleteAccount,
       diaryEntries,
+      filteredDiaryEntries,
       addDiaryEntry,
       updateDiaryEntry,
       deleteDiaryEntry,

@@ -30,7 +30,7 @@ import {
   Highlighter,
   Eraser,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AppLayout } from "@/components/app-layout";
@@ -79,9 +79,28 @@ export const Route = createFileRoute("/_authenticated/diary")({
 });
 
 function DiaryPage() {
-  const { diaryEntries, addDiaryEntry, updateDiaryEntry, deleteDiaryEntry, trades, rules } =
-    useJournal();
+  const {
+    diaryEntries,
+    addDiaryEntry,
+    updateDiaryEntry,
+    deleteDiaryEntry,
+    trades,
+    rules,
+    accounts,
+    activeAccountId,
+  } = useJournal();
   const callCoach = useServerFn(askCoach);
+
+  const currentAccount = accounts.find((a) => a.id === activeAccountId);
+
+  // Filter entries according to active account:
+  // If "all", show all entries across all accounts.
+  // If specific account, show only that account's entries (or default to primary account if unassigned).
+  const displayedDiaryEntries = useMemo(() => {
+    if (activeAccountId === "all") return diaryEntries;
+    const defaultAccId = accounts[0]?.id ?? "acc_main";
+    return diaryEntries.filter((d) => (d.accountId ?? defaultAccId) === activeAccountId);
+  }, [diaryEntries, activeAccountId, accounts]);
 
   // View mode: starts on "topics" (Table of Contents / Topic Page) when opening the diary
   const [viewMode, setViewMode] = useState<"topics" | "entry">("topics");
@@ -90,6 +109,9 @@ function DiaryPage() {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
 
   // Form fields for active diary page
+  const [entryAccountId, setEntryAccountId] = useState<string>(() =>
+    activeAccountId !== "all" ? activeAccountId : accounts[0]?.id ?? "acc_main",
+  );
   const [day, setDay] = useState<string>(() => getDayNameFromDate(getTodayDateString()));
   const [date, setDate] = useState<string>(getTodayDateString);
   const [title, setTitle] = useState<string>("");
@@ -126,19 +148,23 @@ function DiaryPage() {
 
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Active entry resolved from journal store
+  // Active entry resolved from journal store (using displayedDiaryEntries)
   const activeEntry = useMemo(() => {
     if (selectedEntryId) {
-      const found = diaryEntries.find((e) => e.id === selectedEntryId);
+      const found = displayedDiaryEntries.find((e) => e.id === selectedEntryId);
       if (found) return found;
     }
-    return diaryEntries[0] || null;
-  }, [diaryEntries, selectedEntryId]);
+    return displayedDiaryEntries[0] || null;
+  }, [displayedDiaryEntries, selectedEntryId]);
 
-  // Synchronize inputs when active entry changes
+  // Synchronize inputs when active entry changes or updates
   useEffect(() => {
     if (activeEntry) {
       setSelectedEntryId(activeEntry.id);
+      setEntryAccountId(
+        activeEntry.accountId ||
+          (activeAccountId !== "all" ? activeAccountId : accounts[0]?.id ?? "acc_main"),
+      );
       setDay(activeEntry.day || getDayNameFromDate(activeEntry.date));
       setDate(activeEntry.date);
       setTitle(activeEntry.title || "");
@@ -150,13 +176,11 @@ function DiaryPage() {
       setAiAnalysis(null);
       setShowAiNotes(false);
       setFloatingToolbar(null);
-
-      if (editorRef.current && lastLoadedIdRef.current !== activeEntry.id) {
-        lastLoadedIdRef.current = activeEntry.id;
-        editorRef.current.innerHTML = activeEntry.content || "";
-      }
     } else {
       // If store is completely empty, create an initial blank sheet for today
+      setEntryAccountId(
+        activeAccountId !== "all" ? activeAccountId : accounts[0]?.id ?? "acc_main",
+      );
       setDay(getDayNameFromDate(getTodayDateString()));
       setDate(getTodayDateString());
       setTitle("");
@@ -166,22 +190,43 @@ function DiaryPage() {
       setScreenshots([]);
       setSaveStatus("saved");
       setFloatingToolbar(null);
+    }
+  }, [activeEntry?.id, activeEntry?.updatedAt, activeAccountId]);
 
-      if (editorRef.current) {
-        lastLoadedIdRef.current = null;
-        editorRef.current.innerHTML = "";
+  // Synchronize editor DOM innerHTML safely:
+  // - Runs on entering viewMode === "entry" or switching activeEntry
+  // - Fills the notebook if the DOM is empty but activeEntry has content
+  // - NEVER interrupts or overwrites the DOM while the user is actively focused or typing
+  const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+  useIsomorphicLayoutEffect(() => {
+    if (viewMode === "entry" && editorRef.current) {
+      const isFocused =
+        typeof document !== "undefined" && document.activeElement === editorRef.current;
+      const targetContent = activeEntry?.content || "";
+
+      const shouldLoad =
+        lastLoadedIdRef.current !== activeEntry?.id ||
+        (!editorRef.current.innerHTML.trim() && targetContent.trim()) ||
+        (!isFocused && saveStatus === "saved" && editorRef.current.innerHTML !== targetContent);
+
+      if (shouldLoad) {
+        lastLoadedIdRef.current = activeEntry?.id || "empty";
+        editorRef.current.innerHTML = targetContent;
       }
     }
-  }, [activeEntry?.id]);
+    if (viewMode === "topics") {
+      lastLoadedIdRef.current = null;
+    }
+  }, [viewMode, activeEntry?.id, activeEntry?.content, saveStatus]);
 
   // Signed chart URLs for attached screenshots
   const screenshotPaths = useMemo(() => screenshots.map((s) => s.url), [screenshots]);
   const signedUrls = useSignedChartUrls(screenshotPaths);
 
-  // Topic grouping: groups pages having identical title AND day
+  // Topic grouping: groups pages having identical title, day, and account
   const topicGroups = useMemo(() => {
     const filtered = archiveSearch.trim()
-      ? diaryEntries.filter((e) => {
+      ? displayedDiaryEntries.filter((e) => {
           const q = archiveSearch.toLowerCase();
           return (
             e.title?.toLowerCase().includes(q) ||
@@ -192,16 +237,16 @@ function DiaryPage() {
             e.session?.toLowerCase().includes(q)
           );
         })
-      : diaryEntries;
+      : displayedDiaryEntries;
     return groupDiaryEntriesIntoTopics(filtered);
-  }, [diaryEntries, archiveSearch]);
+  }, [displayedDiaryEntries, archiveSearch]);
 
   // Current topic group that activeEntry belongs to
   const currentTopic = useMemo(() => {
     if (!activeEntry) return null;
-    const all = groupDiaryEntriesIntoTopics(diaryEntries);
+    const all = groupDiaryEntriesIntoTopics(displayedDiaryEntries);
     return all.find((t) => t.pages.some((p) => p.id === activeEntry.id)) || null;
-  }, [diaryEntries, activeEntry]);
+  }, [displayedDiaryEntries, activeEntry]);
 
   const currentTopicPages = useMemo(() => {
     return currentTopic ? currentTopic.pages : activeEntry ? [activeEntry] : [];
@@ -321,7 +366,14 @@ function DiaryPage() {
 
   // Save current entry (create new or update existing)
   const handleSave = async (showToast = true) => {
-    const editorHtml = editorRef.current ? editorRef.current.innerHTML : content;
+    // Read from DOM if mounted and has content; safely fallback to content state to prevent accidental wipes
+    let editorHtml = content;
+    if (editorRef.current) {
+      const currentDomHtml = editorRef.current.innerHTML;
+      if (currentDomHtml.trim() || !content.trim()) {
+        editorHtml = currentDomHtml;
+      }
+    }
     const plainText = stripDiaryHtml(editorHtml);
 
     if (!plainText && !title.trim() && screenshots.length === 0) {
@@ -333,6 +385,7 @@ function DiaryPage() {
       setSaveStatus("saving");
       if (activeEntry) {
         await updateDiaryEntry(activeEntry.id, {
+          accountId: entryAccountId,
           day,
           date,
           title: title.trim(),
@@ -345,6 +398,7 @@ function DiaryPage() {
         if (showToast) toast.success("Diary page saved to journal!");
       } else {
         const created = await addDiaryEntry({
+          accountId: entryAccountId,
           day,
           date,
           title: title.trim(),
@@ -368,6 +422,7 @@ function DiaryPage() {
   // Open a specific topic page directly from Table of Contents
   const handleOpenTopic = (entryId: string) => {
     setSelectedEntryId(entryId);
+    lastLoadedIdRef.current = null;
     setViewMode("entry");
   };
 
@@ -379,9 +434,11 @@ function DiaryPage() {
 
     const todayStr = getTodayDateString();
     const todayDay = getDayNameFromDate(todayStr);
+    const targetAccId = activeAccountId !== "all" ? activeAccountId : accounts[0]?.id ?? "acc_main";
 
     try {
       const created = await addDiaryEntry({
+        accountId: targetAccId,
         date: todayStr,
         day: todayDay,
         title: "",
@@ -392,6 +449,7 @@ function DiaryPage() {
       });
       setSelectedEntryId(created.id);
       lastLoadedIdRef.current = created.id;
+      setEntryAccountId(targetAccId);
       setDay(todayDay);
       setDate(todayStr);
       setTitle("");
@@ -422,6 +480,7 @@ function DiaryPage() {
 
     try {
       const created = await addDiaryEntry({
+        accountId: entryAccountId,
         date,
         day,
         title: title.trim(), // Keep exact same title & day so it continues the same topic!
@@ -623,6 +682,8 @@ function DiaryPage() {
         `1. Evaluate my emotional state, clarity, and mindset on this day.`,
         `2. Highlight any subconscious leaks (e.g. overconfidence, revenge impulse, fear of losing, fatigue, or FOMO).`,
         `3. Provide one concrete mental rule or routine to maintain discipline before my next trade.`,
+        ``,
+        `LANGUAGE REQUIREMENT: Match the language of my diary entry! If my thoughts are written in Hinglish, mentor me in natural Hinglish. If in English, mentor in English. If I wrote in both, use both languages naturally.`,
       ].join("\n");
 
       const response = await callCoach({
@@ -870,7 +931,9 @@ function DiaryPage() {
                         </h2>
                       </div>
                       <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-400 mt-1 font-serif italic">
-                        Table of Contents — Continuous pages of the same topic are grouped together
+                        {activeAccountId === "all"
+                          ? "All Accounts combined — sorted chronologically by date and time"
+                          : `Showing diary entries for ${currentAccount?.name ?? "Selected Account"}`}
                       </p>
                     </div>
 
@@ -906,7 +969,11 @@ function DiaryPage() {
                   {topicGroups.length === 0 ? (
                     <div className="py-16 text-center font-serif">
                       <p className="text-lg text-stone-600 dark:text-stone-400">
-                        {archiveSearch ? "No topics match your filter." : "Your journal is waiting for its first topic."}
+                        {archiveSearch
+                          ? "No topics match your filter."
+                          : activeAccountId === "all"
+                          ? "Your journal is waiting for its first topic across all accounts."
+                          : `No diary topics yet for ${currentAccount?.name ?? "this account"}.`}
                       </p>
                       <Button
                         size="sm"
@@ -925,6 +992,9 @@ function DiaryPage() {
                         (acc, p) => acc + (p.screenshots?.length || 0),
                         0,
                       );
+                      const entryAcc = accounts.find(
+                        (a) => a.id === (firstPage?.accountId || group.accountId || accounts[0]?.id),
+                      );
 
                       return (
                         <div
@@ -938,7 +1008,7 @@ function DiaryPage() {
                           )}
                         >
                           <div className="space-y-1.5 min-w-0 flex-1">
-                            {/* Metadata line: Page #, Date, Day, Mood */}
+                            {/* Metadata line: Page #, Date, Day, Mood, Account */}
                             <div className="flex flex-wrap items-center gap-2 text-xs">
                               <span className="font-serif font-bold uppercase tracking-wider text-[11px] px-2 py-0.5 rounded bg-amber-700/10 text-amber-800 dark:text-amber-400 border border-amber-700/20">
                                 {group.pages.length > 1
@@ -948,6 +1018,23 @@ function DiaryPage() {
                               <span className="font-serif font-semibold text-stone-600 dark:text-stone-400">
                                 {group.day}, {formatDisplayDate(group.date)}
                               </span>
+                              {entryAcc && (
+                                <span
+                                  className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-serif font-medium border"
+                                  style={{
+                                    backgroundColor: `${entryAcc.color || "#598bff"}18`,
+                                    borderColor: `${entryAcc.color || "#598bff"}45`,
+                                    color: entryAcc.color || "#598bff",
+                                  }}
+                                  title={`Trading Account: ${entryAcc.name}`}
+                                >
+                                  <span
+                                    className="size-1.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: entryAcc.color || "#598bff" }}
+                                  />
+                                  <span className="truncate max-w-[130px]">{entryAcc.name}</span>
+                                </span>
+                              )}
                               {group.session && (
                                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-stone-200/80 dark:bg-stone-800 text-stone-700 dark:text-stone-300">
                                   {group.session}
@@ -1192,6 +1279,43 @@ function DiaryPage() {
                         </button>
                       ))}
                     </div>
+
+                    {/* Account Attribution Chip */}
+                    {accounts.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span
+                          className={cn(
+                            "text-[11px] font-serif font-semibold uppercase tracking-wider",
+                            paperTheme === "ivory" ? "text-stone-500" : "text-stone-400",
+                          )}
+                        >
+                          Account:
+                        </span>
+                        <select
+                          value={entryAccountId}
+                          onChange={(e) => {
+                            setEntryAccountId(e.target.value);
+                            markDirty();
+                          }}
+                          className={cn(
+                            "text-[11px] px-2 py-0.5 rounded-full font-serif font-semibold border transition-all cursor-pointer focus:outline-none",
+                            paperTheme === "ivory"
+                              ? "bg-stone-200/80 border-stone-300 text-stone-900"
+                              : "bg-stone-800 border-stone-700 text-stone-100",
+                          )}
+                        >
+                          {accounts.map((acc) => (
+                            <option
+                              key={acc.id}
+                              value={acc.id}
+                              className="text-stone-900 bg-white dark:bg-stone-900 dark:text-stone-100 font-sans"
+                            >
+                              {acc.name} ({acc.currency})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1332,7 +1456,7 @@ function DiaryPage() {
                   {/* Ruled contentEditable Notebook Paper */}
                   <div
                     ref={editorRef}
-                    contentEditable
+                    contentEditable="true"
                     suppressContentEditableWarning
                     onInput={handleEditorInput}
                     onKeyUp={handleSelectionChange}

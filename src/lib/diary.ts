@@ -27,6 +27,7 @@ export interface DiaryScreenshot {
 
 export interface DiaryEntry {
   id: string;
+  accountId?: string | undefined; // Linked trading account (e.g. "acc_main")
   date: string; // "YYYY-MM-DD" e.g. "2026-11-02"
   day: string; // e.g. "Monday"
   title: string; // e.g. "Pre-FOMC Mindset & Risk Discipline"
@@ -41,6 +42,7 @@ export interface DiaryEntry {
 
 export interface TopicGroup {
   topicKey: string;
+  accountId?: string | undefined;
   title: string;
   day: string;
   date: string;
@@ -51,8 +53,9 @@ export interface TopicGroup {
 
 /**
  * Groups diary entries into distinct topics:
- * Entries with the same title and the same day are grouped into continuous pages of the same topic.
- * If either the title or the day is different, they are presented as separate topics.
+ * Entries with the same title, same day, and same account are grouped into continuous pages.
+ * If title, day, or account is different, they are presented as separate topics.
+ * Sorted chronologically by most recent date/time.
  */
 export function groupDiaryEntriesIntoTopics(entries: DiaryEntry[]): TopicGroup[] {
   const groups: TopicGroup[] = [];
@@ -61,7 +64,8 @@ export function groupDiaryEntriesIntoTopics(entries: DiaryEntry[]): TopicGroup[]
   for (const entry of entries) {
     const normTitle = (entry.title || "").trim().toLowerCase();
     const normDay = (entry.day || "").trim().toLowerCase();
-    const key = `${normDay}__${normTitle || "untitled"}`;
+    const acc = entry.accountId || "acc_main";
+    const key = `${acc}__${normDay}__${normTitle || "untitled"}`;
 
     const existing = keyMap.get(key);
     if (existing) {
@@ -69,6 +73,7 @@ export function groupDiaryEntriesIntoTopics(entries: DiaryEntry[]): TopicGroup[]
     } else {
       const newGroup: TopicGroup = {
         topicKey: key,
+        accountId: entry.accountId,
         title: entry.title?.trim() || "Untitled Reflection",
         day: entry.day,
         date: entry.date,
@@ -85,6 +90,15 @@ export function groupDiaryEntriesIntoTopics(entries: DiaryEntry[]): TopicGroup[]
   for (const group of groups) {
     group.pages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }
+
+  // Sort topics by most recent page date & time descending (newest topics first)
+  groups.sort((a, b) => {
+    const latestA = a.pages[a.pages.length - 1];
+    const latestB = b.pages[b.pages.length - 1];
+    const timeA = latestA ? new Date(latestA.createdAt || latestA.date).getTime() : 0;
+    const timeB = latestB ? new Date(latestB.createdAt || latestB.date).getTime() : 0;
+    return timeB - timeA;
+  });
 
   return groups;
 }

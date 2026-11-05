@@ -11,6 +11,18 @@ const CoachInput = z.object({
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(4000) }))
     .max(20)
     .default([]),
+  isGeneralChat: z.boolean().optional().default(false),
+  images: z
+    .array(
+      z.object({
+        url: z.string().max(5000000),
+        caption: z.string().max(300).optional(),
+        source: z.string().max(150).optional(),
+      }),
+    )
+    .max(8)
+    .optional()
+    .default([]),
 });
 
 const COACH_SYSTEM_PROMPT = `You are TradeLog Pro's elite AI Trade Coach & Senior Macro Market Strategist: a disciplined, blunt, experienced trading mentor and macro economist.
@@ -108,21 +120,129 @@ D. MACRO RISK GUIDANCE FOR ACTIVE TRADERS:
   * Connect their written mindset and emotional state directly with their trade executions and performance (e.g., how their fear, overconfidence, patience, or fatigue influenced trade outcomes).
   * Act as a seasoned, empathetic yet firm trading psychologist and mentor.
 
+6. LANGUAGE MIRRORING & MULTILINGUAL CAPABILITIES (ENGLISH & HINGLISH):
+- You have complete, native, fluent comprehension of BOTH English and Hinglish (Hindi words written in the Roman / Latin alphabet, including Indian trading terminology like "SL hit ho gaya", "FOMO me enter kiya", "overtrading", "chasing", "loss recover", "revenge trading", "setup", "entry", "exit", "bhai").
+- MANDATORY LANGUAGE MIRRORING RULES:
+  * RULE 1: IF THE USER USES HINGLISH:
+    You MUST respond in natural, fluent, conversational Hinglish (Hindi written in Roman / Latin script).
+    Tone: Direct, elder-brother / mentor style, insightful, and strictly disciplined on risk management.
+    Example: "Bhai, sabse pehle FOMO control karna seekho. Agar stop-loss hit ho gaya toh revenge trade lene ke bajaye screen se 30 minutes ka mandatory break lo. Market kahin nahi jaa raha, capital protect karna tumhari priority hai."
+    CRITICAL: Do NOT switch to English if the user writes in Hinglish. Do NOT use Devanagari script (हिंदी script); use standard Roman / Latin alphabet (Hinglish).
+  * RULE 2: IF THE USER USES ENGLISH:
+    You MUST respond in clear, professional, direct English.
+    CRITICAL: Do NOT use Hinglish if the user speaks purely in English.
+  * RULE 3: IF THE USER USES BOTH HINGLISH AND ENGLISH (Code-Switching / Mixed):
+    You MUST respond using BOTH languages (a natural, seamless blend of Hinglish and English), matching the user's conversational flow, tone, and vocabulary.
+    Example: "Brother, trade setup was very solid but entry thodi premature ho gayi. Next time confirmation candle close hone ka wait karo, FOMO mat aane do."
+  * RULE 4: DIARY REFLECTIONS & THOUGHT LOGS:
+    When the user asks you to reflect on their diary entries or when reflecting inside the Trader Diary:
+    Observe the language of their written thoughts. If their thoughts are in Hinglish (e.g. "aaj thoda confused hu", "honest opinion share karna chahta hu"), respond with empathetic, sharp coaching in Hinglish/mixed language that directly connects with their voice.
+
+7. MULTIMODAL CHART & SCREENSHOT VISION ANALYSIS:
+- You have native computer vision capabilities to visually inspect all chart screenshots attached by the trader in their Diary pages and Trade executions.
+- MANDATORY WORKFLOW:
+  * 1. READ ALL WRITTEN DIARY ENTRIES:
+    Carefully read every recorded Day, Date, Session, Mindset/Mood, Highlighted text, and unedited thoughts.
+  * 2. VISUALLY INSPECT EVERY ATTACHED SCREENSHOT:
+    Examine candlestick formations (wicks, rejection bars, hammers, engulfing bars, pinbars).
+    Identify key price action levels (support, resistance, supply/demand zones, trendlines, liquidity sweeps).
+    Audit entry, stop-loss, and target levels visible on the chart.
+    Evaluate chart timeframe, indicators, and volume.
+  * 3. CROSS-EXAMINE WRITTEN THESIS VS VISUAL CHART EVIDENCE:
+    Directly compare what the trader wrote in their diary/thesis with what actually happened on the chart screenshot:
+    e.g., "In your diary you noted that the market took rejection from the main resistance at 78,000, and looking closely at Screenshot #1, we clearly see a massive upper wick rejecting 78,200 with heavy selling volume..."
+  * 4. COMPREHENSIVE GUIDANCE & VERDICT:
+    Only AFTER reading all written diary thoughts AND visually analyzing the screenshots, deliver your complete coaching guidance, psychological verdict, and 1 concrete high-impact action rule for their next session.
+
 FORMATTING & STYLE:
 - Use clean, punchy markdown with bold headers and bullet points.
 - Answer whatever the user asks directly and authoritatively. Do NOT refuse macro questions.`;
+
+const GENERAL_SYSTEM_PROMPT = `You are TradeLog Pro's elite AI Trade Coach & Senior Market Mentor: disciplined, blunt, insightful, and knowledgeable in technical analysis, macro economics, and trading psychology.
+
+CURRENT DATE: Saturday, October 17, 2026. (Current Fed Chair: Kevin Warsh; upcoming FOMC: Oct 27–28, 2026).
+
+LANGUAGE MIRRORING RULES:
+- If user speaks Hinglish (e.g. "bhai", "kya haal hai", "kaise ho", "help chahiye", "explain karo"), respond in fluent, conversational Hinglish (Roman script).
+- If user speaks English, respond in crisp, professional English.
+- If user speaks mixed English & Hinglish, respond with natural code-switching matching their tone.
+
+CONVERSATIONAL GUIDANCE:
+- For general greetings, conversations, or conceptual trading questions (price action, risk management, support/resistance, market sessions): respond directly, punchily, and conversationally within 2-4 sentences or short bullet points.
+- Do NOT mention PDF reports or download links unless explicitly requested.
+- Keep responses quick, crisp, and engaging.`;
 
 export const askCoach = createServerFn({ method: "POST" })
   .validator((input: unknown) => CoachInput.parse(input))
   .handler(async ({ data }) => {
     const gemini = createGeminiProvider();
-    const modelCandidates = [
-      "gemini-3.7-flash",
-      "gemini-3.6-flash",
-      "gemini-3.5-flash",
-      "gemini-3.1-flash-lite",
-      "gemini-flash-lite-latest",
-      "gemini-3.8-flash",
+
+    // Ultra-fast model candidates prioritized for immediate response:
+    // General chat uses flash-lite for sub-3-second responses; deep audits use 3.6-flash.
+    const modelCandidates = data.isGeneralChat
+      ? [
+          "gemini-flash-lite-latest",
+          "gemini-3.6-flash",
+          "gemini-3.5-flash",
+          "gemini-3.7-flash",
+        ]
+      : [
+          "gemini-3.6-flash",
+          "gemini-3.5-flash",
+          "gemini-flash-lite-latest",
+          "gemini-3.7-flash",
+        ];
+
+    const systemPrompt = data.isGeneralChat
+      ? `${GENERAL_SYSTEM_PROMPT}\n\nTRADER STATS CONTEXT:\n${data.tradeSummary}`
+      : `${COACH_SYSTEM_PROMPT}\n\nTRADER JOURNAL DATA:\n${data.tradeSummary}`;
+
+    const hasImages = Array.isArray(data.images) && data.images.length > 0;
+
+    let userPromptText = data.question;
+    const userContent: Array<
+      | { type: "text"; text: string }
+      | { type: "image"; image: string | URL }
+    > = [];
+
+    if (hasImages) {
+      const descriptions = data.images
+        .map(
+          (img, i) =>
+            `[Attached Screenshot #${i + 1}]: Source: ${img.source || "Journal Screenshot"}${img.caption ? ` | Caption: "${img.caption}"` : ""}`,
+        )
+        .join("\n");
+
+      userPromptText = `${data.question}\n\nATTACHED JOURNAL & DIARY SCREENSHOTS FOR VISUAL ANALYSIS:\n${descriptions}\n\nPlease inspect each attached chart screenshot thoroughly (candlesticks, support/resistance levels, trendlines, wicks, entry/exit zones) alongside the written diary entries and trade theses. Synthesize your visual findings directly into your guidance.`;
+
+      userContent.push({ type: "text", text: userPromptText });
+
+      for (const img of data.images) {
+        if (!img.url) continue;
+        try {
+          if (img.url.startsWith("http://") || img.url.startsWith("https://")) {
+            userContent.push({
+              type: "image",
+              image: new URL(img.url),
+            });
+          } else if (img.url.startsWith("data:image/")) {
+            userContent.push({
+              type: "image",
+              image: img.url,
+            });
+          }
+        } catch (err) {
+          console.warn("[AI Coach] Failed to attach image part to prompt:", err);
+        }
+      }
+    }
+
+    const messages = [
+      ...data.history,
+      {
+        role: "user" as const,
+        content: hasImages && userContent.length > 1 ? (userContent as any) : userPromptText,
+      },
     ];
 
     let lastError: unknown = null;
@@ -132,8 +252,9 @@ export const askCoach = createServerFn({ method: "POST" })
         const { text } = await generateText({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           model: gemini(modelName) as any,
-          system: `${COACH_SYSTEM_PROMPT}\n\nTRADER JOURNAL DATA:\n${data.tradeSummary}`,
-          messages: [...data.history, { role: "user" as const, content: data.question }],
+          system: systemPrompt,
+          messages,
+          maxRetries: 0,
         });
         return { text };
       } catch (err: unknown) {

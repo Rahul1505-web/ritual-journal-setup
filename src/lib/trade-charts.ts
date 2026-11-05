@@ -105,3 +105,35 @@ export function useSignedChartUrls(paths: string[]): Record<string, string> {
 
   return urls;
 }
+
+/** Resolves storage paths to signed URLs, or returns data/http URLs as-is */
+export async function resolveChartUrls(paths: string[]): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  const storagePaths: string[] = [];
+
+  for (const p of paths) {
+    if (!p) continue;
+    if (p.startsWith("data:") || p.startsWith("blob:") || p.startsWith("http://") || p.startsWith("https://")) {
+      result[p] = p;
+    } else {
+      storagePaths.push(p);
+    }
+  }
+
+  if (storagePaths.length > 0) {
+    try {
+      const { data } = await supabase.storage.from(CHART_BUCKET).createSignedUrls(storagePaths, 60 * 60);
+      if (data) {
+        data.forEach((row, i) => {
+          const p = row.path ?? storagePaths[i];
+          if (p && row.signedUrl) result[p] = row.signedUrl;
+        });
+      }
+    } catch (e) {
+      console.warn("Failed to sign chart paths:", e);
+    }
+  }
+
+  return result;
+}
+

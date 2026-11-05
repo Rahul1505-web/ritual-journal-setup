@@ -5,9 +5,11 @@ import {
   Check,
   FileDown,
   FileText,
+  Image as ImageIcon,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  Paperclip,
   Pencil,
   Plus,
   Send,
@@ -26,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { askCoach } from "@/lib/coach.functions";
 import { useJournal } from "@/lib/journal-store";
 import { exportPerformancePdf } from "@/lib/pdf-export";
+import { resolveChartUrls, validateChartFile } from "@/lib/trade-charts";
 import type { Trade } from "@/lib/trades";
 import {
   byEmotion,
@@ -158,11 +161,13 @@ function loadInitialData(): { sessions: ChatSession[]; activeId: string } {
 }
 
 const SUGGESTIONS = [
+  "Bhai mere recent trades audit karo aur mistakes batao",
+  "Mere diary ke chart screenshots aur thoughts audit karo",
   "Reflect on my latest diary thoughts & trading mindset",
   "Generate a PDF audit of my last 4 trades",
+  "FOMO me entry ho rahi hai, kaise control karu?",
   "Did my thoughts or emotions in my diary affect my recent trades?",
   "When is the next FOMC meeting?",
-  "What are the major macro events in 2026 and 2027?",
   "Analyse my last 10 trades",
   "Which emotion costs me the most money?",
 ];
@@ -300,7 +305,7 @@ function isUserRequestingPdf(text: string): boolean {
 }
 
 function parseInlineMarkdown(text: string) {
-  const regex = /(\*\*.*?\*\*|\*.*?\*)/g;
+  const regex = /(\*\*.*?\*\*|\*.*?\*|`.*?`)/g;
   const segments = text.split(regex);
 
   return segments.map((seg, i) => {
@@ -318,6 +323,16 @@ function parseInlineMarkdown(text: string) {
         </em>
       );
     }
+    if (seg.startsWith("`") && seg.endsWith("`") && seg.length >= 2) {
+      return (
+        <code
+          key={i}
+          className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-xs text-primary font-medium"
+        >
+          {seg.slice(1, -1)}
+        </code>
+      );
+    }
     return <span key={i}>{seg}</span>;
   });
 }
@@ -329,11 +344,44 @@ function FormattedMessage({ content, isUser }: { content: string; isUser: boolea
 
   const lines = content.split("\n");
   return (
-    <div className="space-y-1.5 leading-relaxed text-sm">
+    <div className="space-y-2 leading-relaxed text-sm">
       {lines.map((line, idx) => {
         const trimmed = line.trim();
         if (!trimmed) {
           return <div key={idx} className="h-1.5" />;
+        }
+
+        // Markdown headings (#, ##, ###)
+        if (trimmed.startsWith("### ")) {
+          return (
+            <h4
+              key={idx}
+              className="font-bold text-sm sm:text-base text-foreground mt-3 mb-1 tracking-tight flex items-center gap-1.5"
+            >
+              <span className="size-1.5 rounded-full bg-primary" />
+              <span>{parseInlineMarkdown(trimmed.slice(4))}</span>
+            </h4>
+          );
+        }
+        if (trimmed.startsWith("## ")) {
+          return (
+            <h3
+              key={idx}
+              className="font-bold text-base sm:text-lg text-foreground mt-3.5 mb-1.5 tracking-tight border-b border-border/40 pb-1"
+            >
+              {parseInlineMarkdown(trimmed.slice(3))}
+            </h3>
+          );
+        }
+        if (trimmed.startsWith("# ")) {
+          return (
+            <h2
+              key={idx}
+              className="font-extrabold text-lg sm:text-xl text-foreground mt-4 mb-2 tracking-tight"
+            >
+              {parseInlineMarkdown(trimmed.slice(2))}
+            </h2>
+          );
         }
 
         const isBullet = trimmed.startsWith("- ") || trimmed.startsWith("* ");
@@ -349,7 +397,7 @@ function FormattedMessage({ content, isUser }: { content: string; isUser: boolea
 
         if (isBullet) {
           return (
-            <div key={idx} className="flex items-start gap-2 pl-1">
+            <div key={idx} className="flex items-start gap-2.5 pl-1">
               <span className="size-1.5 rounded-full bg-primary/70 shrink-0 mt-2" />
               <div className="flex-1">{parts}</div>
             </div>
@@ -359,7 +407,7 @@ function FormattedMessage({ content, isUser }: { content: string; isUser: boolea
         if (isNumbered) {
           const numberMatch = trimmed.match(/^(\d+)\.\s/);
           return (
-            <div key={idx} className="flex items-start gap-2 pl-1">
+            <div key={idx} className="flex items-start gap-2.5 pl-1">
               <span className="text-xs font-bold text-primary shrink-0 mt-0.5">
                 {numberMatch ? numberMatch[1] + "." : "•"}
               </span>
@@ -393,6 +441,93 @@ function AiCoach() {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Attached screenshots state for direct upload or clipboard paste (Ctrl + V)
+  type ChatImageAttachment = {
+    id: string;
+    url: string;
+    name?: string;
+  };
+  const [attachedChatImages, setAttachedChatImages] = useState<ChatImageAttachment[]>([]);
+  const chatFileInputRef = useRef<HTMLInputElement>(null);
+
+  const compressImageIfNeeded = (dataUrl: string, maxDim = 1280, quality = 0.85): Promise<string> => {
+    return new Promise((resolve) => {
+      if (!dataUrl.startsWith("data:image/")) {
+        resolve(dataUrl);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width <= maxDim && height <= maxDim && dataUrl.length < 500000) {
+          resolve(dataUrl);
+          return;
+        }
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
+  const handleAttachFile = async (file: File) => {
+    const error = validateChartFile(file);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const raw = reader.result as string;
+      const compressed = await compressImageIfNeeded(raw);
+      setAttachedChatImages((prev) => [
+        ...prev,
+        {
+          id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          url: compressed,
+          name: file.name,
+        },
+      ]);
+      toast.success("Chart screenshot attached to chat!");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePasteInChat = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item && item.type.indexOf("image") !== -1) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          await handleAttachFile(file);
+        }
+      }
+    }
+  };
 
   const activeSession = sessions.find((s) => s.id === activeId) || sessions[0];
   const messages = activeSession ? activeSession.messages : [WELCOME_MSG];
@@ -437,6 +572,21 @@ function AiCoach() {
   useEffect(() => {
     if (!loading) inputRef.current?.focus();
   }, [loading]);
+
+  // Auto-adjust scroll position when zooming in, zooming out, or resizing
+  useEffect(() => {
+    const handleResize = () => {
+      if (scrollRef.current) {
+        const { scrollHeight, scrollTop, clientHeight } = scrollRef.current;
+        const isNearBottom = scrollHeight - scrollTop - clientHeight < 250;
+        if (isNearBottom) {
+          scrollRef.current.scrollTo({ top: scrollHeight, behavior: "instant" });
+        }
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const handleNewChat = () => {
     const newSession = createDefaultSession("New Chat");
@@ -529,8 +679,34 @@ function AiCoach() {
     }
   };
 
-  const buildSummary = () => {
+  const isTradeOrDiaryAudit = (query: string): boolean => {
+    if (!query) return false;
+    const q = query.toLowerCase();
+    return (
+      /\b(trade|trades|trading|journal|audit|pnl|p&l|profit|loss|winrate|win rate|drawdown|balance|execution|orders?)\b/i.test(q) ||
+      /\b(diary|dairy|thought|thoughts|mindset|psychology|reflect|reflection|written|wrote|note|notes|highlight)\b/i.test(q) ||
+      /\b(fomo|revenge|discipline|mistake|mistakes|rule|rules|overtrading|greed|fear)\b/i.test(q) ||
+      /\b(sl|tp|stop\s*loss|take\s*profit|rr|risk\s*reward|leverage|position\s*size)\b/i.test(q) ||
+      /\b(pdf|report|export|download)\b/i.test(q) ||
+      /\b(last\s+\d+|recent\s+\d+|previous\s+\d+|latest\s+trade|my\s+last)\b/i.test(q) ||
+      /\b(mere\s+trades?|meri\s+trading|mera\s+loss|mera\s+profit|meri\s+mistake|meri\s+diary|maine\s+kya\s+likha)\b/i.test(q)
+    );
+  };
+
+  const buildSummary = (query: string) => {
     const s = stats(trades);
+    const isAudit = isTradeOrDiaryAudit(query);
+
+    // Fast compact profile for general chat (avoids token bloat, delivers sub-5s response)
+    if (!isAudit) {
+      return [
+        `CURRENT SYSTEM DATE: Saturday, October 17, 2026`,
+        `Trader Quick Profile: ${s.count} total trades logged, net ${signedMoney(s.total)}, win rate ${s.winRate.toFixed(1)}% (${s.wins}W/${s.losses}L).`,
+        `Active Rules: ${rules.length > 0 ? rules.map((r) => r.text).join(" | ") : "No rules logged yet"}`,
+      ].join("\n");
+    }
+
+    // Full comprehensive data for in-depth trade & diary analysis
     const sortedTrades = sortByDate(trades).reverse();
     const recent = sortedTrades.slice(0, 20);
     return [
@@ -606,8 +782,13 @@ function AiCoach() {
   };
 
   const send = async (text: string) => {
-    const question = text.trim();
-    if (!question || loading || !activeSession) return;
+    const rawQuestion = text.trim();
+    const hasPastedImages = attachedChatImages.length > 0;
+    if ((!rawQuestion && !hasPastedImages) || loading || !activeSession) return;
+
+    const question =
+      rawQuestion || (hasPastedImages ? "Please analyze this attached chart screenshot." : "");
+    const isAudit = isTradeOrDiaryAudit(question);
 
     const targetSessionId = activeSession.id;
     const isFirstUserMsg =
@@ -634,12 +815,97 @@ function AiCoach() {
       ),
     );
 
+    const currentChatImages = [...attachedChatImages];
+    setAttachedChatImages([]);
     setInput("");
     setLoading(true);
 
+    // 1. Manually attached or pasted images in the chat
+    const chatImages = currentChatImages.map((img) => ({
+      url: img.url,
+      caption: img.name || "Pasted screenshot",
+      source: "Chat attachment (Direct paste/upload)",
+    }));
+
+    // 2. Diary screenshots (from all recorded diary pages)
+    const diaryScreenshots: Array<{ url: string; caption?: string; source: string }> = [];
+    for (const entry of diaryEntries) {
+      if (entry.screenshots && entry.screenshots.length > 0) {
+        for (const sc of entry.screenshots) {
+          if (sc.url) {
+            diaryScreenshots.push({
+              url: sc.url,
+              caption: sc.caption || "Diary chart",
+              source: `Diary: "${entry.title || "Reflection"}" (${entry.day}, ${entry.date})`,
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Trade chart screenshots
+    const tradeCharts: Array<{ url: string; caption?: string; source: string }> = [];
+    for (const t of trades.slice(0, 10)) {
+      if (t.charts && t.charts.length > 0) {
+        for (const c of t.charts) {
+          if (c) {
+            tradeCharts.push({
+              url: c,
+              caption: `${t.symbol} ${t.direction} trade chart`,
+              source: `Trade: ${t.symbol} ${t.direction} (${formatDate(t.date)})`,
+            });
+          }
+        }
+      }
+    }
+
+    const mentionsScreenshots =
+      /\b(screenshot|screenshots|chart|charts|photo|image|images|pic|pics|graph)\b/i.test(question);
+    const shouldSendImages = isAudit || mentionsScreenshots || chatImages.length > 0;
+
+    let payloadImages: Array<{ url: string; caption?: string; source?: string }> = [];
+
+    if (shouldSendImages) {
+      // Prioritize chat-pasted images first, then newest diary screenshots, then trade charts (up to 6)
+      const candidateImages = [...chatImages, ...diaryScreenshots, ...tradeCharts].slice(0, 6);
+      const rawPaths = candidateImages.map((img) => img.url);
+
+      try {
+        const resolvedMap = await resolveChartUrls(rawPaths);
+        payloadImages = candidateImages
+          .map((img) => ({
+            url: resolvedMap[img.url] || img.url,
+            ...(img.caption ? { caption: img.caption } : {}),
+            ...(img.source ? { source: img.source } : {}),
+          }))
+          .filter(
+            (img) =>
+              img.url &&
+              (img.url.startsWith("http://") ||
+                img.url.startsWith("https://") ||
+                img.url.startsWith("data:image/")),
+          );
+      } catch (err) {
+        console.warn("Failed to resolve chart URLs for AI Coach:", err);
+        payloadImages = chatImages
+          .filter((img) => img.url.startsWith("data:image/"))
+          .map((img) => ({
+            url: img.url,
+            ...(img.caption ? { caption: img.caption } : {}),
+            ...(img.source ? { source: img.source } : {}),
+          }));
+      }
+    }
+
     try {
       const res = await callCoach({
-        data: { question, tradeSummary: buildSummary(), history },
+        data: {
+          question,
+          tradeSummary: buildSummary(question),
+          history,
+          isGeneralChat: !isAudit && payloadImages.length === 0,
+          images: payloadImages,
+        },
       });
 
       setSessions((prev) =>
@@ -681,6 +947,7 @@ function AiCoach() {
     <AppLayout
       title="AI Trade Coach"
       subtitle="Personalised feedback built from your journal"
+      fullHeight
       actions={
         <div className="flex items-center gap-2">
           <Button
@@ -707,7 +974,7 @@ function AiCoach() {
         </div>
       }
     >
-      <Card className="relative flex h-[calc(100vh-13rem)] min-h-[520px] flex-row gap-0 overflow-hidden p-0 border-border bg-card">
+      <Card className="relative flex flex-1 min-h-[440px] w-full flex-row gap-0 overflow-hidden p-0 border-border bg-card shadow-sm">
         {/* Mobile backdrop */}
         {sidebarOpen ? (
           <div
@@ -869,9 +1136,9 @@ function AiCoach() {
         </aside>
 
         {/* Main Chat Area */}
-        <div className="flex flex-1 flex-col min-w-0 overflow-hidden bg-card/60">
+        <div className="flex flex-1 flex-col min-w-0 min-h-0 overflow-hidden bg-card/60">
           {/* Subheader: Sidebar Toggle + Horizontal Tabs Strip + Action Buttons */}
-          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 bg-surface-1/30">
+          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 bg-surface-1/40 shrink-0">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               {!sidebarOpen ? (
                 <Button
@@ -1022,7 +1289,10 @@ function AiCoach() {
           </div>
 
           {/* Messages Stream */}
-          <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
+          <div
+            ref={scrollRef}
+            className="flex-1 min-h-0 space-y-4 overflow-y-auto p-4 sm:p-6 [scrollbar-width:thin] [scrollbar-color:hsl(var(--muted-foreground)/0.25)_transparent]"
+          >
             {messages.map((m, i) => {
               const isAssistant = m.role === "assistant";
               const prevMessage = i > 0 ? messages[i - 1] : null;
@@ -1054,21 +1324,21 @@ function AiCoach() {
                 >
                   <div
                     className={cn(
-                      "flex gap-3 max-w-[90%] sm:max-w-[75%]",
+                      "flex gap-3 w-full",
                       m.role === "user" ? "justify-end" : "justify-start",
                     )}
                   >
                     {isAssistant ? (
-                      <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+                      <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary shadow-xs">
                         <Bot className="size-4" />
                       </span>
                     ) : null}
                     <div
                       className={cn(
-                        "w-full rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
+                        "rounded-2xl px-4 sm:px-5 py-3 text-sm leading-relaxed shadow-xs transition-all",
                         m.role === "user"
-                          ? "bg-primary text-primary-foreground font-medium"
-                          : "bg-surface-2 text-foreground",
+                          ? "bg-primary text-primary-foreground font-medium max-w-[85%] sm:max-w-[70%]"
+                          : "bg-surface-2 text-foreground w-full max-w-[96%] lg:max-w-[92%] xl:max-w-[88%] border border-border/40",
                       )}
                     >
                       <FormattedMessage content={displayContent} isUser={m.role === "user"} />
@@ -1144,7 +1414,7 @@ function AiCoach() {
           </div>
 
           {/* Suggestion Chips & Message Input */}
-          <div className="border-t border-border p-2.5 sm:p-3">
+          <div className="border-t border-border p-2.5 sm:p-3 shrink-0 bg-surface-1/30">
             {showSuggestions ? (
               <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
                 <span className="shrink-0 text-[10px] uppercase font-semibold text-muted-foreground flex items-center gap-1 pl-1">
@@ -1183,29 +1453,96 @@ function AiCoach() {
                 </button>
               </div>
             )}
+
+            {/* Attached Screenshots preview bar (Ctrl + V / file upload) */}
+            {attachedChatImages.length > 0 ? (
+              <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+                {attachedChatImages.map((img) => (
+                  <div
+                    key={img.id}
+                    className="group relative flex items-center gap-1.5 rounded-xl border border-primary/40 bg-surface-2 p-1.5 pr-2.5 shadow-xs shrink-0"
+                  >
+                    <img
+                      src={img.url}
+                      alt="Attached chart"
+                      className="size-8 rounded-lg object-cover border border-border"
+                    />
+                    <span className="max-w-[130px] truncate text-[11px] font-medium text-foreground">
+                      {img.name || "Pasted Chart"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAttachedChatImages((prev) => prev.filter((p) => p.id !== img.id))
+                      }
+                      className="rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors ml-1"
+                      title="Remove screenshot"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                ))}
+                <span className="text-[10px] text-muted-foreground shrink-0">
+                  (Ready for visual analysis)
+                </span>
+              </div>
+            ) : null}
+
+            {/* Hidden File Input for Add Screenshot */}
+            <input
+              ref={chatFileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  void handleAttachFile(file);
+                }
+                e.target.value = "";
+              }}
+            />
+
             <form
-              className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2"
+              className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
                 void send(input);
               }}
             >
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => chatFileInputRef.current?.click()}
+                title="Attach chart screenshot (or press Ctrl + V anywhere to paste)"
+                className="size-11 shrink-0 rounded-xl border-border bg-surface-2 hover:bg-surface-3 text-muted-foreground hover:text-foreground shadow-xs transition-colors"
+              >
+                <ImageIcon className="size-4.5" />
+              </Button>
+
               <Textarea
                 ref={inputRef}
                 rows={2}
                 autoFocus
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onPaste={handlePasteInChat}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     void send(input);
                   }
                 }}
-                placeholder="Ask about your trades, mistakes, or request a PDF report…"
-                className="min-h-[48px] max-h-36 resize-none text-xs sm:text-sm"
+                placeholder="Ask about trades, paste charts (Ctrl+V), or audit diary screenshots & thoughts…"
+                className="min-h-[46px] max-h-32 resize-none text-xs sm:text-sm bg-surface-2/60 border-border/80 focus-visible:ring-primary/40 shadow-xs"
               />
-              <Button type="submit" size="icon" className="size-11 shrink-0" disabled={loading}>
+              <Button
+                type="submit"
+                size="icon"
+                className="size-11 shrink-0 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs"
+                disabled={loading || (!input.trim() && attachedChatImages.length === 0)}
+              >
                 <Send className="size-4" />
               </Button>
             </form>

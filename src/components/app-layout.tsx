@@ -66,11 +66,13 @@ export function AppLayout({
   subtitle,
   actions,
   children,
+  fullHeight = false,
 }: {
   title: string;
   subtitle?: string;
   actions?: ReactNode;
   children: ReactNode;
+  fullHeight?: boolean;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { isDemo, accounts, activeAccountId, setActiveAccountId } = useJournal();
@@ -124,8 +126,18 @@ export function AppLayout({
       </aside>
 
       {/* Main Content Area */}
-      <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-background/80 px-4 py-3.5 backdrop-blur-sm sm:px-8 sm:py-5">
+      <div
+        className={cn(
+          "lg:pl-64 flex flex-col",
+          fullHeight ? "h-screen lg:h-dvh overflow-hidden" : "min-h-screen",
+        )}
+      >
+        <header
+          className={cn(
+            "sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-sm sm:px-8",
+            fullHeight ? "py-3 sm:py-3.5" : "py-3.5 sm:py-5",
+          )}
+        >
           <div className="flex items-center gap-3 min-w-0">
             {/* Mobile Hamburger Drawer Trigger */}
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -240,12 +252,19 @@ export function AppLayout({
         </header>
 
         {isDemo ? (
-          <div className="mx-4 mt-4 rounded-xl border border-warning/30 bg-warning/10 px-4 py-2.5 text-xs font-medium text-muted-foreground sm:mx-8 sm:mt-6 sm:px-5 sm:py-3">
+          <div className="mx-4 mt-3 shrink-0 rounded-xl border border-warning/30 bg-warning/10 px-4 py-2 text-xs font-medium text-muted-foreground sm:mx-8 sm:mt-4 sm:px-5 sm:py-2.5">
             Showing sample data — log your first trade and this journal switches to your real trades.
           </div>
         ) : null}
 
-        <main className="animate-in fade-in duration-300 px-4 pb-28 pt-5 sm:px-8 sm:pt-6 lg:pb-12">
+        <main
+          className={cn(
+            "animate-in fade-in duration-300",
+            fullHeight
+              ? "flex-1 min-h-0 flex flex-col px-3 pb-20 pt-3 sm:px-6 sm:pt-4 sm:pb-4 lg:px-8 lg:pb-5 lg:pt-4 overflow-hidden"
+              : "px-4 pb-28 pt-5 sm:px-8 sm:pt-6 lg:pb-12",
+          )}
+        >
           {children}
         </main>
       </div>
