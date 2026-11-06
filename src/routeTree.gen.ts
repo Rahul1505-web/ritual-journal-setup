@@ -16,6 +16,7 @@ import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedAddTradeRouteImport } from './routes/_authenticated/add-trade'
 import { Route as AuthenticatedAiCoachRouteImport } from './routes/_authenticated/ai-coach'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
+import { Route as AuthenticatedCalculatorRouteImport } from './routes/_authenticated/calculator'
 import { Route as AuthenticatedDiaryRouteImport } from './routes/_authenticated/diary'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedRulesRouteImport } from './routes/_authenticated/rules'
@@ -55,6 +56,11 @@ const AuthenticatedAiCoachRoute = AuthenticatedAiCoachRouteImport.update({
 const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCalculatorRoute = AuthenticatedCalculatorRouteImport.update({
+  id: '/calculator',
+  path: '/calculator',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedDiaryRoute = AuthenticatedDiaryRouteImport.update({
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/add-trade': typeof AuthenticatedAddTradeRoute
   '/ai-coach': typeof AuthenticatedAiCoachRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
+  '/calculator': typeof AuthenticatedCalculatorRoute
   '/diary': typeof AuthenticatedDiaryRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/rules': typeof AuthenticatedRulesRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/add-trade': typeof AuthenticatedAddTradeRoute
   '/ai-coach': typeof AuthenticatedAiCoachRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
+  '/calculator': typeof AuthenticatedCalculatorRoute
   '/diary': typeof AuthenticatedDiaryRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/rules': typeof AuthenticatedRulesRoute
@@ -126,6 +134,7 @@ export interface FileRoutesById {
   '/_authenticated/add-trade': typeof AuthenticatedAddTradeRoute
   '/_authenticated/ai-coach': typeof AuthenticatedAiCoachRoute
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
+  '/_authenticated/calculator': typeof AuthenticatedCalculatorRoute
   '/_authenticated/diary': typeof AuthenticatedDiaryRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/rules': typeof AuthenticatedRulesRoute
@@ -143,6 +152,7 @@ export interface FileRouteTypes {
     | '/add-trade'
     | '/ai-coach'
     | '/analytics'
+    | '/calculator'
     | '/diary'
     | '/profile'
     | '/rules'
@@ -156,6 +166,7 @@ export interface FileRouteTypes {
     | '/add-trade'
     | '/ai-coach'
     | '/analytics'
+    | '/calculator'
     | '/diary'
     | '/profile'
     | '/rules'
@@ -171,6 +182,7 @@ export interface FileRouteTypes {
     | '/_authenticated/add-trade'
     | '/_authenticated/ai-coach'
     | '/_authenticated/analytics'
+    | '/_authenticated/calculator'
     | '/_authenticated/diary'
     | '/_authenticated/profile'
     | '/_authenticated/rules'
@@ -236,6 +248,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAnalyticsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/calculator': {
+      id: '/_authenticated/calculator'
+      path: '/calculator'
+      fullPath: '/calculator'
+      preLoaderRoute: typeof AuthenticatedCalculatorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/diary': {
       id: '/_authenticated/diary'
       path: '/diary'
@@ -286,6 +305,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAddTradeRoute: typeof AuthenticatedAddTradeRoute
   AuthenticatedAiCoachRoute: typeof AuthenticatedAiCoachRoute
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
+  AuthenticatedCalculatorRoute: typeof AuthenticatedCalculatorRoute
   AuthenticatedDiaryRoute: typeof AuthenticatedDiaryRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedRulesRoute: typeof AuthenticatedRulesRoute
@@ -300,6 +320,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAddTradeRoute: AuthenticatedAddTradeRoute,
   AuthenticatedAiCoachRoute: AuthenticatedAiCoachRoute,
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
+  AuthenticatedCalculatorRoute: AuthenticatedCalculatorRoute,
   AuthenticatedDiaryRoute: AuthenticatedDiaryRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedRulesRoute: AuthenticatedRulesRoute,

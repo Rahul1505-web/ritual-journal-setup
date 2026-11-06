@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { AppLayout } from "@/components/app-layout";
@@ -83,6 +83,30 @@ function AddTrade() {
   const [followed, setFollowed] = useState<string[]>([]);
   const [charts, setCharts] = useState<string[]>([]);
   const [lightbox, setLightbox] = useState<number | null>(null);
+
+  // Prefill fields if directed from Position Size Calculator
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("calculator_prefill");
+      if (raw) {
+        sessionStorage.removeItem("calculator_prefill");
+        const data = JSON.parse(raw);
+        if (data.symbol) setSymbol(String(data.symbol));
+        if (data.market) setMarket(data.market);
+        if (data.direction) setDirection(data.direction);
+        if (data.entry) setEntry(String(data.entry));
+        if (data.sl) setSl(String(data.sl));
+        if (data.tp) setTp(String(data.tp));
+        if (data.amount) setAmount(String(data.amount));
+        if (data.leverage) setLeverage(String(data.leverage));
+        if (data.notes) setNotes(String(data.notes));
+        if (data.accountId) setSelectedAccount(String(data.accountId));
+        toast.info("Prefilled trade parameters from Calculator!");
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Price Change % from Entry to Exit (direction-aware)
   const priceChangePct = useMemo(() => {
