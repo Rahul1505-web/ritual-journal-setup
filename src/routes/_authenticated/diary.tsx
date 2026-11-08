@@ -1143,6 +1143,12 @@ function DiaryPage() {
                       return (
                         <div
                           key={group.topicKey}
+                          draggable={true}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("application/x-diary-topic-key", group.topicKey);
+                            e.dataTransfer.setData("application/x-diary-topic-title", group.title);
+                            e.dataTransfer.effectAllowed = "copy";
+                          }}
                           onClick={() => firstPage && handleOpenTopic(firstPage.id)}
                           className={cn(
                             "group cursor-pointer rounded-xl p-4 sm:p-5 border transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4",
@@ -1150,6 +1156,7 @@ function DiaryPage() {
                               ? "bg-stone-100/70 hover:bg-white border-stone-300/80 hover:border-amber-700/50 hover:shadow-md"
                               : "bg-stone-900/60 hover:bg-stone-850 border-stone-800 hover:border-amber-500/50 hover:shadow-md",
                           )}
+                          title="Click to open or drag into AI Coach chat"
                         >
                           <div className="space-y-1.5 min-w-0 flex-1">
                             {/* Metadata line: Page #, Date, Day, Mood, Account */}
@@ -1209,10 +1216,21 @@ function DiaryPage() {
                             </p>
                           </div>
 
-                          {/* Action Arrow */}
+                          {/* Action Arrow & Ask AI Button */}
                           <div className="shrink-0 flex items-center gap-2 self-end sm:self-center">
+                            <Link
+                              to="/ai-coach"
+                              search={{ topicKey: group.topicKey }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 text-[11px] font-sans font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-2.5 py-1 rounded-lg transition-colors border border-primary/25 shadow-2xs hover:scale-105 active:scale-95"
+                              title="Ask Coach Maverick about this topic"
+                            >
+                              <Bot className="size-3.5" />
+                              <span>Ask AI</span>
+                            </Link>
+
                             <span className="text-xs font-serif italic text-amber-800 dark:text-amber-400 font-semibold group-hover:underline flex items-center gap-1">
-                              <span>Open Topic</span>
+                              <span>Open</span>
                               <ArrowRight className="size-3.5 group-hover:translate-x-1 transition-transform" />
                             </span>
                             <Button

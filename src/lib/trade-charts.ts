@@ -19,7 +19,7 @@ export function validateChartFile(file: File): string | null {
   return null;
 }
 
-/** Uploads one screenshot and returns its storage path or data URL for guests. */
+/** Uploads one screenshot and returns its storage path or data URL with automatic fallback. */
 export async function uploadChart(file: File): Promise<string> {
   const user = await getEffectiveUser();
   if (!user) throw new Error("You must be signed in to upload screenshots.");
@@ -35,13 +35,31 @@ export async function uploadChart(file: File): Promise<string> {
 
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "png";
   const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
-  const { error } = await supabase.storage.from(CHART_BUCKET).upload(path, file, {
-    cacheControl: "3600",
-    upsert: false,
-    contentType: file.type,
-  });
-  if (error) throw error;
-  return path;
+  try {
+    const { error } = await supabase.storage.from(CHART_BUCKET).upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+      contentType: file.type,
+    });
+    if (error) {
+      console.warn("[Trade Charts] Supabase storage upload failed, falling back to data URL:", error);
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Failed to process image locally"));
+        reader.readAsDataURL(file);
+      });
+    }
+    return path;
+  } catch (err) {
+    console.warn("[Trade Charts] Supabase storage exception, falling back to data URL:", err);
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("Failed to process image locally"));
+      reader.readAsDataURL(file);
+    });
+  }
 }
 
 export async function deleteChart(path: string): Promise<void> {
@@ -82,20 +100,33 @@ export function useSignedChartUrls(paths: string[]): Record<string, string> {
 
     void supabase.storage
       .from(CHART_BUCKET)
-      .createSignedUrls(storagePaths, 60 * 60)
+      .createSignedUrls(storagePaths, 60 * 60 * 24 * 7)
       .then(({ data }) => {
         if (cancelled) return;
         const next: Record<string, string> = { ...immediateUrls };
         if (data) {
           data.forEach((row, i) => {
             const p = row.path ?? storagePaths[i];
-            if (p && row.signedUrl) next[p] = row.signedUrl;
+            const signed = row.signedUrl || (row as any).signedURL;
+            if (p && signed) {
+              next[p] = signed;
+            } else if (p) {
+              const { data: pubData } = supabase.storage.from(CHART_BUCKET).getPublicUrl(p);
+              if (pubData?.publicUrl) next[p] = pubData.publicUrl;
+            }
           });
         }
         setUrls(next);
       })
       .catch(() => {
-        if (!cancelled) setUrls(immediateUrls);
+        if (!cancelled) {
+          const fallbackUrls: Record<string, string> = { ...immediateUrls };
+          for (const p of storagePaths) {
+            const { data: pubData } = supabase.storage.from(CHART_BUCKET).getPublicUrl(p);
+            if (pubData?.publicUrl) fallbackUrls[p] = pubData.publicUrl;
+          }
+          setUrls(fallbackUrls);
+        }
       });
 
     return () => {
@@ -122,15 +153,25 @@ export async function resolveChartUrls(paths: string[]): Promise<Record<string, 
 
   if (storagePaths.length > 0) {
     try {
-      const { data } = await supabase.storage.from(CHART_BUCKET).createSignedUrls(storagePaths, 60 * 60);
+      const { data } = await supabase.storage.from(CHART_BUCKET).createSignedUrls(storagePaths, 60 * 60 * 24 * 7);
       if (data) {
         data.forEach((row, i) => {
           const p = row.path ?? storagePaths[i];
-          if (p && row.signedUrl) result[p] = row.signedUrl;
+          const signed = row.signedUrl || (row as any).signedURL;
+          if (p && signed) {
+            result[p] = signed;
+          } else if (p) {
+            const { data: pubData } = supabase.storage.from(CHART_BUCKET).getPublicUrl(p);
+            if (pubData?.publicUrl) result[p] = pubData.publicUrl;
+          }
         });
       }
     } catch (e) {
       console.warn("Failed to sign chart paths:", e);
+      for (const p of storagePaths) {
+        const { data: pubData } = supabase.storage.from(CHART_BUCKET).getPublicUrl(p);
+        if (pubData?.publicUrl) result[p] = pubData.publicUrl;
+      }
     }
   }
 

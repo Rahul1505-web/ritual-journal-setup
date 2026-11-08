@@ -1,11 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  BookMarked,
+  BookOpen,
   Bot,
   Check,
+  Eye,
   FileDown,
   FileText,
+  FolderOpen,
   Image as ImageIcon,
+  Layers,
+  Maximize2,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -18,7 +24,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AppLayout } from "@/components/app-layout";
@@ -26,9 +32,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { askCoach } from "@/lib/coach.functions";
+import { groupDiaryEntriesIntoTopics, formatDisplayDate, type TopicGroup } from "@/lib/diary";
 import { useJournal } from "@/lib/journal-store";
 import { exportPerformancePdf } from "@/lib/pdf-export";
-import { resolveChartUrls, validateChartFile } from "@/lib/trade-charts";
+import { resolveChartUrls, useSignedChartUrls, validateChartFile } from "@/lib/trade-charts";
 import type { Trade } from "@/lib/trades";
 import {
   byEmotion,
@@ -45,6 +52,12 @@ import {
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/ai-coach")({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { topicKey?: string | undefined; topicTitle?: string | undefined } => ({
+    topicKey: typeof search["topicKey"] === "string" ? search["topicKey"] : undefined,
+    topicTitle: typeof search["topicTitle"] === "string" ? search["topicTitle"] : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "AI Trade Coach — TradeLog Pro" },
@@ -63,7 +76,12 @@ export const Route = createFileRoute("/_authenticated/ai-coach")({
   component: AiCoach,
 });
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = {
+  role: "user" | "assistant";
+  content: string;
+  images?: Array<{ url: string; caption?: string; name?: string }> | undefined;
+  options?: Array<{ label: string; actionText: string }> | undefined;
+};
 
 export type ChatSession = {
   id: string;
@@ -111,6 +129,169 @@ function formatRelativeTime(ts: number): string {
   return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function sanitizeSessionMessages(sessions: ChatSession[]): ChatSession[] {
+  return sessions.map((s) => ({
+    ...s,
+    messages: s.messages.map((m) => {
+      // If a user message has auto-attached screenshots from journal/diary from the previous bug, clean them
+      if (
+        m.role === "user" &&
+        m.images &&
+        m.images.length > 0 &&
+        m.images.some(
+          (img) =>
+            img.name === "entry!" ||
+            img.name === "sl hit!" ||
+            img.caption === "entry!" ||
+            img.caption === "sl hit!" ||
+            img.name === "Diary chart" ||
+            img.caption === "Diary chart" ||
+            (img.caption && /liquidity|trade|chart|miss this|sweep|tp/i.test(img.caption)) ||
+            (img.name && /liquidity|trade|chart|miss this|sweep|tp/i.test(img.name)) ||
+            (img.url && !img.url.startsWith("data:image/")),
+        )
+      ) {
+        const { images: _ignored, ...rest } = m;
+        return rest;
+      }
+      return m;
+    }),
+  }));
+}
+
+function matchesDateInQuery(dateStr: string | undefined, query: string): boolean {
+  if (!dateStr) return false;
+  const q = query.toLowerCase();
+
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return false;
+
+  const [_, y, m, d] = match;
+  if (!y || !m || !d) return false;
+  const dayNum = parseInt(d, 10);
+  const monthNum = parseInt(m, 10);
+
+  const months = [
+    ["january", "jan"],
+    ["february", "feb"],
+    ["march", "mar"],
+    ["april", "apr"],
+    ["may"],
+    ["june", "jun"],
+    ["july", "jul"],
+    ["august", "aug"],
+    ["september", "sep", "sept"],
+    ["october", "oct"],
+    ["november", "nov"],
+    ["december", "dec"],
+  ];
+
+  const monthNames = months[monthNum - 1] ?? [];
+  const dayPatterns = [
+    `${dayNum}`,
+    `${d}`,
+    `${dayNum}th`,
+    `${dayNum}st`,
+    `${dayNum}nd`,
+    `${dayNum}rd`,
+  ];
+
+  // Direct match: e.g. "2026-11-04", "11-04", "04-11"
+  if (q.includes(`${y}-${m}-${d}`) || q.includes(`${m}-${d}`) || q.includes(`${d}-${m}`)) {
+    return true;
+  }
+
+  for (const mName of monthNames) {
+    if (q.includes(mName)) {
+      for (const dPat of dayPatterns) {
+        if (
+          q.includes(`${dPat} ${mName}`) ||
+          q.includes(`${mName} ${dPat}`) ||
+          q.includes(`${dPat}${mName}`) ||
+          q.includes(`${mName}${dPat}`) ||
+          new RegExp(`\\b${dPat}\\s*(?:taareekh|tarikh|st|nd|rd|th)?\\s*${mName}\\b`).test(q) ||
+          new RegExp(`\\b${mName}\\s*${dPat}\\b`).test(q)
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+function cleanForComparison(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findMatchingDiaryTopics(
+  query: string,
+  topicGroups: TopicGroup[],
+): {
+  matchedTopics: TopicGroup[];
+  hasExactTitleMatch: boolean;
+  extractedTitle?: string | undefined;
+} {
+  const cleanQ = cleanForComparison(query);
+
+  // 1. Check if user put the topic title in quotes, e.g. "MISSING BTC TRADE!" or 'MISSING BTC TRADE!' or “MISSING BTC TRADE!”
+  const quotedMatch = query.match(/["'“‘]([^"'“”‘’]{2,})["'“‘]/);
+  const quotedTitle = quotedMatch?.[1]?.trim();
+  const cleanQuoted = quotedTitle ? cleanForComparison(quotedTitle) : "";
+
+  if (cleanQuoted && cleanQuoted.length >= 2) {
+    const exactQuotedMatches = topicGroups.filter((g) => {
+      const gTitle = cleanForComparison(g.title);
+      return gTitle === cleanQuoted || gTitle.includes(cleanQuoted) || cleanQuoted.includes(gTitle);
+    });
+    if (exactQuotedMatches.length > 0) {
+      return {
+        matchedTopics: exactQuotedMatches,
+        hasExactTitleMatch: true,
+        extractedTitle: quotedTitle,
+      };
+    }
+  }
+
+  // 2. Exact or substring match against known topic titles
+  // Sort topicGroups by title length descending so longer, more specific titles match first
+  const sortedByLen = [...topicGroups].sort(
+    (a, b) => cleanForComparison(b.title).length - cleanForComparison(a.title).length,
+  );
+
+  const matched: TopicGroup[] = [];
+  for (const group of sortedByLen) {
+    const cleanT = cleanForComparison(group.title);
+    if (!cleanT || cleanT.length < 3) continue;
+
+    // Check if query contains the full title as a phrase
+    if (cleanQ.includes(cleanT)) {
+      matched.push(group);
+      continue;
+    }
+
+    // Check word-by-word match if title has at least 2 significant words
+    const tWords = cleanT.split(" ").filter((w) => w.length > 2);
+    if (tWords.length >= 2) {
+      const allWordsInQuery = tWords.every((w) => cleanQ.includes(w));
+      if (allWordsInQuery) {
+        matched.push(group);
+      }
+    }
+  }
+
+  return {
+    matchedTopics: matched,
+    hasExactTitleMatch: matched.length > 0,
+    extractedTitle: matched[0]?.title,
+  };
+}
+
 function loadInitialData(): { sessions: ChatSession[]; activeId: string } {
   if (typeof window === "undefined") {
     const initial = createDefaultSession();
@@ -122,11 +303,13 @@ function loadInitialData(): { sessions: ChatSession[]; activeId: string } {
     if (rawSessions) {
       const parsed = JSON.parse(rawSessions) as ChatSession[];
       if (Array.isArray(parsed) && parsed.length > 0) {
+        const cleaned = sanitizeSessionMessages(parsed);
+        localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(cleaned));
         const savedActiveId = localStorage.getItem(STORAGE_KEY_ACTIVE);
-        const activeExists = parsed.some((s) => s.id === savedActiveId);
+        const activeExists = cleaned.some((s) => s.id === savedActiveId);
         return {
-          sessions: parsed,
-          activeId: activeExists ? (savedActiveId as string) : (parsed[0]?.id ?? "chat_default"),
+          sessions: cleaned,
+          activeId: activeExists ? (savedActiveId as string) : (cleaned[0]?.id ?? "chat_default"),
         };
       }
     }
@@ -145,7 +328,10 @@ function loadInitialData(): { sessions: ChatSession[]; activeId: string } {
           title,
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          messages: parsedLegacy,
+          messages:
+            sanitizeSessionMessages([
+              { id: "", title: "", createdAt: 0, updatedAt: 0, messages: parsedLegacy },
+            ])[0]?.messages ?? parsedLegacy,
         };
         localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify([legacySession]));
         localStorage.setItem(STORAGE_KEY_ACTIVE, legacySession.id);
@@ -337,7 +523,15 @@ function parseInlineMarkdown(text: string) {
   });
 }
 
-function FormattedMessage({ content, isUser }: { content: string; isUser: boolean }) {
+function FormattedMessage({
+  content,
+  isUser,
+  onOpenLightbox,
+}: {
+  content: string;
+  isUser: boolean;
+  onOpenLightbox?: (url: string, title?: string) => void;
+}) {
   if (isUser) {
     return <span className="whitespace-pre-wrap">{content}</span>;
   }
@@ -349,6 +543,50 @@ function FormattedMessage({ content, isUser }: { content: string; isUser: boolea
         const trimmed = line.trim();
         if (!trimmed) {
           return <div key={idx} className="h-1.5" />;
+        }
+
+        // Markdown educational diagrams: ![alt](/diagrams/... or https://...)
+        const imageMatch = trimmed.match(/^!\[(.*?)\]\((.*?)\)$/);
+        if (imageMatch) {
+          const alt = imageMatch[1] || "Trading Logic Diagram";
+          const src = imageMatch[2] || "";
+          return (
+            <div
+              key={idx}
+              className="my-3 rounded-2xl border border-primary/30 bg-surface-1/90 overflow-hidden shadow-sm hover:border-primary/50 transition-all"
+            >
+              <div className="flex items-center justify-between px-3.5 py-2 border-b border-border/40 bg-surface-2/60">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-3.5 text-primary" />
+                  <span className="text-xs font-semibold text-foreground">{alt}</span>
+                  <span className="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/25">
+                    Trading Logic Visual
+                  </span>
+                </div>
+                {onOpenLightbox ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenLightbox(src, alt)}
+                    className="text-[11px] text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 font-medium"
+                  >
+                    <Maximize2 className="size-3" />
+                    <span>Zoom</span>
+                  </button>
+                ) : null}
+              </div>
+              <div
+                className="p-3 bg-surface-3/30 flex items-center justify-center cursor-pointer hover:bg-surface-3/50 transition-colors"
+                onClick={() => onOpenLightbox?.(src, alt)}
+                title="Click to view full size"
+              >
+                <img
+                  src={src}
+                  alt={alt}
+                  className="max-h-72 w-auto object-contain rounded-lg shadow-xs hover:scale-[1.01] transition-transform"
+                />
+              </div>
+            </div>
+          );
         }
 
         // Markdown headings (#, ##, ###)
@@ -424,7 +662,14 @@ function FormattedMessage({ content, isUser }: { content: string; isUser: boolea
 
 function AiCoach() {
   const { trades, rules, diaryEntries } = useJournal();
+  const search = Route.useSearch();
+  // AI Coach TanStack Server Function
   const callCoach = useServerFn(askCoach);
+
+  const allTopicGroups = useMemo(() => groupDiaryEntriesIntoTopics(diaryEntries), [diaryEntries]);
+  const [attachedTopic, setAttachedTopic] = useState<TopicGroup | null>(null);
+  const [isDraggingOverChat, setIsDraggingOverChat] = useState(false);
+  const [topicSearchQuery, setTopicSearchQuery] = useState("");
 
   const [data] = useState(loadInitialData);
   const [sessions, setSessions] = useState<ChatSession[]>(data.sessions);
@@ -442,6 +687,13 @@ function AiCoach() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Lightbox zoom preview modal state
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title?: string | undefined } | null>(null);
+
+  // Journal screenshot picker modal state
+  const [showJournalPicker, setShowJournalPicker] = useState(false);
+  const [journalPickerTab, setJournalPickerTab] = useState<"topics" | "diary" | "trades">("topics");
+
   // Attached screenshots state for direct upload or clipboard paste (Ctrl + V)
   type ChatImageAttachment = {
     id: string;
@@ -450,6 +702,44 @@ function AiCoach() {
   };
   const [attachedChatImages, setAttachedChatImages] = useState<ChatImageAttachment[]>([]);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-attach topic if opened from Diary table of contents ("Ask AI" button or search param)
+  useEffect(() => {
+    if (search.topicKey) {
+      const found = allTopicGroups.find((g) => g.topicKey === search.topicKey);
+      if (found) {
+        setAttachedTopic(found);
+        toast.info(`Topic "${found.title}" attached from Diary`);
+      }
+    } else if (search.topicTitle) {
+      const cleanTarget = cleanForComparison(search.topicTitle);
+      const found = allTopicGroups.find((g) => cleanForComparison(g.title) === cleanTarget);
+      if (found) {
+        setAttachedTopic(found);
+        toast.info(`Topic "${found.title}" attached from Diary`);
+      }
+    }
+  }, [search.topicKey, search.topicTitle, allTopicGroups]);
+
+  const handleAttachJournalScreenshot = async (rawUrl: string, caption?: string) => {
+    try {
+      const resolved = await resolveChartUrls([rawUrl]);
+      const finalUrl = resolved[rawUrl] || rawUrl;
+      setAttachedChatImages((prev) => [
+        ...prev,
+        {
+          id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          url: finalUrl,
+          name: caption || "Journal Chart",
+        },
+      ]);
+      setShowJournalPicker(false);
+      toast.success("Screenshot attached to chat!");
+    } catch (e) {
+      console.error("Failed to attach journal screenshot:", e);
+      toast.error("Could not attach screenshot");
+    }
+  };
 
   const compressImageIfNeeded = (dataUrl: string, maxDim = 1280, quality = 0.85): Promise<string> => {
     return new Promise((resolve) => {
@@ -529,8 +819,116 @@ function AiCoach() {
     }
   };
 
+  const handleDragOverChat = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDraggingOverChat) {
+      setIsDraggingOverChat(true);
+    }
+  };
+
+  const handleDragLeaveChat = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDraggingOverChat(false);
+  };
+
+  const handleDropOnChat = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOverChat(false);
+
+    // 1. Check for Diary Topic key or title in drag data
+    const topicKey = e.dataTransfer.getData("application/x-diary-topic-key");
+    const topicTitle = e.dataTransfer.getData("application/x-diary-topic-title");
+
+    if (topicKey) {
+      const found = allTopicGroups.find((g) => g.topicKey === topicKey);
+      if (found) {
+        setAttachedTopic(found);
+        toast.success(`Attached Topic: "${found.title}"`);
+        return;
+      }
+    }
+
+    if (topicTitle) {
+      const cleanTitle = cleanForComparison(topicTitle);
+      const found = allTopicGroups.find((g) => cleanForComparison(g.title) === cleanTitle);
+      if (found) {
+        setAttachedTopic(found);
+        toast.success(`Attached Topic: "${found.title}"`);
+        return;
+      }
+    }
+
+    // 2. Check for image files dropped (charts / screenshots)
+    const files = Array.from(e.dataTransfer.files || []);
+    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+    if (imageFiles.length > 0) {
+      for (const file of imageFiles) {
+        await handleAttachFile(file);
+      }
+      return;
+    }
+
+    // 3. Fallback: Check plain text for diary topic format
+    const plainText = e.dataTransfer.getData("text/plain");
+    if (plainText) {
+      const match = plainText.match(/Diary Topic:\s*"([^"]+)"/i);
+      if (match && match[1]) {
+        const cleanT = cleanForComparison(match[1]);
+        const found = allTopicGroups.find((g) => cleanForComparison(g.title) === cleanT);
+        if (found) {
+          setAttachedTopic(found);
+          toast.success(`Attached Topic: "${found.title}"`);
+          return;
+        }
+      }
+    }
+  };
+
   const activeSession = sessions.find((s) => s.id === activeId) || sessions[0];
   const messages = activeSession ? activeSession.messages : [WELCOME_MSG];
+
+  // Collect all known chart paths from session messages, diary entries, trades, and chat attachments
+  const allKnownImagePaths = useMemo(() => {
+    const paths: string[] = [];
+    if (activeSession) {
+      for (const m of activeSession.messages) {
+        if (m.images) {
+          for (const img of m.images) {
+            if (img.url) paths.push(img.url);
+          }
+        }
+      }
+    }
+    for (const entry of diaryEntries) {
+      if (entry.screenshots) {
+        for (const sc of entry.screenshots) {
+          if (sc.url) paths.push(sc.url);
+        }
+      }
+    }
+    for (const t of trades) {
+      if (t.charts) {
+        for (const c of t.charts) {
+          if (c) paths.push(c);
+        }
+      }
+    }
+    for (const img of attachedChatImages) {
+      if (img.url) paths.push(img.url);
+    }
+    return Array.from(new Set(paths));
+  }, [activeSession, diaryEntries, trades, attachedChatImages]);
+
+  const signedImageMap = useSignedChartUrls(allKnownImagePaths);
+
+  // Clean up any remaining legacy auto-attached screenshots from user messages on mount
+  useEffect(() => {
+    setSessions((prev) => sanitizeSessionMessages(prev));
+  }, []);
 
   // Focus rename input on entering edit mode
   useEffect(() => {
@@ -717,6 +1115,8 @@ function AiCoach() {
     // Full comprehensive data for in-depth trade & diary analysis
     const sortedTrades = sortByDate(trades).reverse();
     const recent = sortedTrades.slice(0, 20);
+    const reversedEntries = [...diaryEntries].reverse();
+
     return [
       `CURRENT SYSTEM LIVE DATE: ${liveDateStr} (${liveTimeStr})`,
       `Overall Journal Stats: ${s.count} total trades, net ${signedMoney(s.total)}, win rate ${s.winRate.toFixed(1)}% (${s.wins}W/${s.losses}L).`,
@@ -757,9 +1157,20 @@ function AiCoach() {
           .join("; "),
       "Active Trading Rules: " + (rules.length > 0 ? rules.map((r) => r.text).join(" | ") : "No rules logged yet"),
       "",
+      "DIARY TOPICS INDEX (Table of Contents - all topics recorded in trader's diary):",
+      ...(allTopicGroups.length > 0
+        ? allTopicGroups.map((tg, idx) => {
+            const scList = tg.pages
+              .flatMap((p) => p.screenshots || [])
+              .map((sc, i) => `#${i + 1} "${sc.caption || "Chart"}"`);
+            const scInfo = scList.length > 0 ? ` | Charts: ${scList.join(", ")}` : " | No charts attached";
+            return `- Topic #${idx + 1}: "${tg.title}" | Date: ${tg.date} (${tg.day}) | Session: ${tg.session || "N/A"} | Mood: ${tg.mood || "N/A"} | ${tg.pages.length} page(s)${scInfo}`;
+          })
+        : ["No topics logged in diary yet."]),
+      "",
       "TRADER DIARY & THOUGHT LOGS (All written thoughts by trader, newest first):",
-      ...(diaryEntries.length > 0
-        ? diaryEntries.slice(0, 20).map((entry, idx) => {
+      ...(reversedEntries.length > 0
+        ? reversedEntries.slice(0, 20).map((entry, idx) => {
             const moodStr = entry.mood ? ` | Mood: ${entry.mood}` : "";
             const sessStr = entry.session ? ` | Session: ${entry.session}` : "";
             const titleStr = entry.title ? ` - "${entry.title}"` : "";
@@ -792,10 +1203,15 @@ function AiCoach() {
   const send = async (text: string) => {
     const rawQuestion = text.trim();
     const hasPastedImages = attachedChatImages.length > 0;
-    if ((!rawQuestion && !hasPastedImages) || loading || !activeSession) return;
+    if ((!rawQuestion && !hasPastedImages && !attachedTopic) || loading || !activeSession) return;
 
     const question =
-      rawQuestion || (hasPastedImages ? "Please analyze this attached chart screenshot." : "");
+      rawQuestion ||
+      (attachedTopic
+        ? `Please audit my attached diary topic "${attachedTopic.title}" (${attachedTopic.day}, ${formatDisplayDate(attachedTopic.date)})`
+        : hasPastedImages
+        ? "Please analyze this attached chart screenshot."
+        : "");
     const isAudit = isTradeOrDiaryAudit(question);
 
     const targetSessionId = activeSession.id;
@@ -808,7 +1224,234 @@ function AiCoach() {
           : question
         : activeSession.title;
 
-    const history = activeSession.messages.slice(1).slice(-8);
+    const history = activeSession.messages.slice(1).slice(-8).map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
+    const currentChatImages = [...attachedChatImages];
+    const currentAttachedTopic = attachedTopic;
+    setAttachedChatImages([]);
+    setInput("");
+    setLoading(true);
+
+    // 1. Check if a topic was specified by key in the actionText (e.g. "key: ...")
+    let targetTopic: TopicGroup | null = currentAttachedTopic;
+    let isDisambiguationRequired = false;
+    let disambiguationOptions: Array<{ label: string; actionText: string }> = [];
+    let disambiguationPrompt = "";
+
+    const keyMatch = question.match(/key:\s*([^\s)]+)/i);
+    if (!targetTopic && keyMatch && keyMatch[1]) {
+      const matchedByKey = allTopicGroups.find((g) => g.topicKey === keyMatch[1]);
+      if (matchedByKey) {
+        targetTopic = matchedByKey;
+      }
+    }
+
+    // 2. If no topic attached or matched by key, search in allTopicGroups
+    if (!targetTopic) {
+      const topicMatchResult = findMatchingDiaryTopics(question, allTopicGroups);
+      if (topicMatchResult.hasExactTitleMatch && topicMatchResult.matchedTopics.length > 0) {
+        const matchingTopics = topicMatchResult.matchedTopics;
+
+        if (matchingTopics.length === 1) {
+          targetTopic = matchingTopics[0] ?? null;
+        } else {
+          // Multiple topics match the title!
+          // Check if user specified a date in their prompt
+          const dateFiltered = matchingTopics.filter((t) => matchesDateInQuery(t.date, question));
+          if (dateFiltered.length === 1) {
+            targetTopic = dateFiltered[0] ?? null;
+          } else if (dateFiltered.length > 1) {
+            // Same date, multiple records/sessions!
+            isDisambiguationRequired = true;
+            const theDate = dateFiltered[0]?.date ?? "";
+            disambiguationPrompt = `Bhai, **${formatDisplayDate(theDate)}** ko **"${topicMatchResult.extractedTitle || dateFiltered[0]?.title}"** title ke multiple records/sessions mile hain. Tumhe konsa wala chahiye?`;
+            disambiguationOptions = dateFiltered.map((t, idx) => ({
+              label: `🕒 ${t.session || `Session #${idx + 1}`} (${t.pages.length} pages · ${t.pages.flatMap((p) => p.screenshots || []).length} screenshots)`,
+              actionText: `Topic "${t.title}" on ${t.date} (${t.session || `Session #${idx + 1}`} · key: ${t.topicKey})`,
+            }));
+          } else {
+            // Check if topics are on different dates or same date
+            const uniqueDates = Array.from(new Set(matchingTopics.map((t) => t.date)));
+            if (uniqueDates.length > 1) {
+              // Different dates
+              isDisambiguationRequired = true;
+              disambiguationPrompt = `Bhai, tumhari diary mein **"${topicMatchResult.extractedTitle || matchingTopics[0]?.title}"** title ke multiple dates par topics mile hain. Tumhe kis date ka topic analyze / dekhna hai?`;
+              disambiguationOptions = matchingTopics.map((t) => ({
+                label: `📅 ${t.day}, ${formatDisplayDate(t.date)} (${t.session || "Session"} · ${t.pages.flatMap((p) => p.screenshots || []).length} screenshots)`,
+                actionText: `Topic "${t.title}" on ${t.date} (${t.session || "Session"} · key: ${t.topicKey})`,
+              }));
+            } else {
+              // Same date, multiple records
+              isDisambiguationRequired = true;
+              const theDate = matchingTopics[0]?.date ?? "";
+              disambiguationPrompt = `Bhai, **${formatDisplayDate(theDate)}** ko **"${topicMatchResult.extractedTitle || matchingTopics[0]?.title}"** title ke multiple records/sessions mile hain. Tumhe konsa wala chahiye?`;
+              disambiguationOptions = matchingTopics.map((t, idx) => ({
+                label: `🕒 ${t.session || `Session #${idx + 1}`} (${t.pages.length} pages · ${t.pages.flatMap((p) => p.screenshots || []).length} screenshots)`,
+                actionText: `Topic "${t.title}" on ${t.date} (${t.session || `Session #${idx + 1}`} · key: ${t.topicKey})`,
+              }));
+            }
+          }
+        }
+      }
+    }
+
+    // IF DISAMBIGUATION IS REQUIRED: Ask user immediately without guessing!
+    if (isDisambiguationRequired) {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === targetSessionId
+            ? {
+                ...s,
+                title: newTitle,
+                messages: [
+                  ...s.messages,
+                  { role: "user", content: question },
+                  {
+                    role: "assistant",
+                    content: disambiguationPrompt,
+                    options: disambiguationOptions,
+                  },
+                ],
+                updatedAt: Date.now(),
+              }
+            : s,
+        ),
+      );
+      setLoading(false);
+      return;
+    }
+
+    // 3. User pasted/attached images in chat
+    const chatImages = currentChatImages.map((img) => ({
+      url: img.url,
+      caption: img.name || "Attached Screenshot",
+      source: "Chat attachment (Direct user upload/paste)",
+    }));
+
+    const userWantsToSeeScreenshots =
+      /\b(dekhna|dekhne|dikhao|dikhaye|dekho|show|view|display|bhejo|lao)\b/i.test(question) &&
+      /\b(screenshot|screenshots|chart|charts|photo|photos|image|images|pic|pics|ss)\b/i.test(question);
+
+    const mentionsScreenshotsExplicitly =
+      userWantsToSeeScreenshots ||
+      /\b(screenshot|screenshots|chart|charts|photo|image|images|pic|pics|graph|ss)\b/i.test(question);
+
+    let payloadImages: Array<{ url: string; caption?: string; source?: string }> = [];
+
+    if (chatImages.length > 0) {
+      payloadImages = chatImages;
+    } else if (targetTopic) {
+      // EXACT TOPIC MATCHED! Collect ONLY this topic's screenshots
+      const topicScreenshots = targetTopic.pages
+        .flatMap((p) => p.screenshots || [])
+        .filter((sc) => !!sc.url);
+
+      if (topicScreenshots.length > 0) {
+        const rawPaths = topicScreenshots.map((sc) => sc.url);
+        try {
+          const resolvedMap = await resolveChartUrls(rawPaths);
+          payloadImages = topicScreenshots.map((sc, i) => ({
+            url: resolvedMap[sc.url] || signedImageMap[sc.url] || sc.url,
+            caption: sc.caption || `Screenshot #${i + 1}`,
+            source: `Diary Topic: "${targetTopic.title}" (${targetTopic.day}, ${targetTopic.date}${targetTopic.session ? ` - ${targetTopic.session}` : ""})`,
+          }));
+        } catch {
+          payloadImages = topicScreenshots.map((sc, i) => ({
+            url: signedImageMap[sc.url] || sc.url,
+            caption: sc.caption || `Screenshot #${i + 1}`,
+            source: `Diary Topic: "${targetTopic.title}" (${targetTopic.day}, ${targetTopic.date})`,
+          }));
+        }
+      }
+    } else if (mentionsScreenshotsExplicitly) {
+      // General screenshot lookup (e.g. date-matched)
+      const reversedEntries = [...diaryEntries].reverse();
+      const dateMatchedDiary: Array<{ url: string; caption?: string; source: string }> = [];
+      const dateMatchedTrades: Array<{ url: string; caption?: string; source: string }> = [];
+      const otherDiary: Array<{ url: string; caption?: string; source: string }> = [];
+      const otherTradeCharts: Array<{ url: string; caption?: string; source: string }> = [];
+
+      for (const entry of reversedEntries) {
+        if (entry.screenshots && entry.screenshots.length > 0) {
+          const isDateMatch = matchesDateInQuery(entry.date, question);
+          for (const sc of entry.screenshots) {
+            if (sc.url) {
+              const item = {
+                url: sc.url,
+                caption: sc.caption || "Diary chart",
+                source: `Diary: "${entry.title || "Reflection"}" (${entry.day}, ${entry.date})`,
+              };
+              if (isDateMatch) {
+                dateMatchedDiary.push(item);
+              } else {
+                otherDiary.push(item);
+              }
+            }
+          }
+        }
+      }
+
+      for (const t of trades) {
+        if (t.charts && t.charts.length > 0) {
+          const isDateMatch = matchesDateInQuery(t.date, question);
+          t.charts.forEach((c, idx) => {
+            if (c) {
+              const item = {
+                url: c,
+                caption: `${t.symbol} Chart #${idx + 1}`,
+                source: `Trade: ${t.symbol} (${formatDate(t.date)})`,
+              };
+              if (isDateMatch) {
+                dateMatchedTrades.push(item);
+              } else {
+                otherTradeCharts.push(item);
+              }
+            }
+          });
+        }
+      }
+
+      const candidateImages: Array<{ url: string; caption?: string; source: string }> = [
+        ...dateMatchedDiary,
+        ...dateMatchedTrades,
+        ...(dateMatchedDiary.length === 0 && dateMatchedTrades.length === 0
+          ? [...otherDiary, ...otherTradeCharts]
+          : []),
+      ];
+
+      const seen = new Set<string>();
+      const uniqueCandidates = candidateImages.filter((item) => {
+        if (!item.url || seen.has(item.url)) return false;
+        seen.add(item.url);
+        return true;
+      }).slice(0, 4);
+
+      const rawPaths = uniqueCandidates.map((img) => img.url);
+      try {
+        const resolvedMap = await resolveChartUrls(rawPaths);
+        payloadImages = uniqueCandidates.map((img) => ({
+          url: resolvedMap[img.url] || signedImageMap[img.url] || img.url,
+          ...(img.caption ? { caption: img.caption } : {}),
+          ...(img.source ? { source: img.source } : {}),
+        }));
+      } catch {
+        payloadImages = uniqueCandidates.map((img) => ({
+          url: signedImageMap[img.url] || img.url,
+          ...(img.caption ? { caption: img.caption } : {}),
+          ...(img.source ? { source: img.source } : {}),
+        }));
+      }
+    }
+
+    // ONLY display images in the user's message bubble if the user EXPLICITLY attached or pasted them!
+    const userMsgImages = currentChatImages.map((img) => ({
+      url: img.url,
+      caption: img.name || "Attached Screenshot",
+      name: img.name || "Attached Screenshot",
+    }));
 
     setSessions((prev) =>
       prev.map((s) =>
@@ -816,102 +1459,31 @@ function AiCoach() {
           ? {
               ...s,
               title: newTitle,
-              messages: [...s.messages, { role: "user", content: question }],
+              messages: [
+                ...s.messages,
+                {
+                  role: "user",
+                  content: question,
+                  ...(userMsgImages.length > 0 ? { images: userMsgImages } : {}),
+                },
+              ],
               updatedAt: Date.now(),
             }
           : s,
       ),
     );
 
-    const currentChatImages = [...attachedChatImages];
-    setAttachedChatImages([]);
-    setInput("");
-    setLoading(true);
-
-    // 1. Manually attached or pasted images in the chat
-    const chatImages = currentChatImages.map((img) => ({
-      url: img.url,
-      caption: img.name || "Pasted screenshot",
-      source: "Chat attachment (Direct paste/upload)",
-    }));
-
-    // 2. Diary screenshots (from all recorded diary pages)
-    const diaryScreenshots: Array<{ url: string; caption?: string; source: string }> = [];
-    for (const entry of diaryEntries) {
-      if (entry.screenshots && entry.screenshots.length > 0) {
-        for (const sc of entry.screenshots) {
-          if (sc.url) {
-            diaryScreenshots.push({
-              url: sc.url,
-              caption: sc.caption || "Diary chart",
-              source: `Diary: "${entry.title || "Reflection"}" (${entry.day}, ${entry.date})`,
-            });
-          }
-        }
-      }
-    }
-
-    // 3. Trade chart screenshots
-    const tradeCharts: Array<{ url: string; caption?: string; source: string }> = [];
-    for (const t of trades.slice(0, 10)) {
-      if (t.charts && t.charts.length > 0) {
-        for (const c of t.charts) {
-          if (c) {
-            tradeCharts.push({
-              url: c,
-              caption: `${t.symbol} ${t.direction} trade chart`,
-              source: `Trade: ${t.symbol} ${t.direction} (${formatDate(t.date)})`,
-            });
-          }
-        }
-      }
-    }
-
-    const mentionsScreenshots =
-      /\b(screenshot|screenshots|chart|charts|photo|image|images|pic|pics|graph)\b/i.test(question);
-    const shouldSendImages = isAudit || mentionsScreenshots || chatImages.length > 0;
-
-    let payloadImages: Array<{ url: string; caption?: string; source?: string }> = [];
-
-    if (shouldSendImages) {
-      // Prioritize chat-pasted images first, then newest diary screenshots, then trade charts (up to 6)
-      const candidateImages = [...chatImages, ...diaryScreenshots, ...tradeCharts].slice(0, 6);
-      const rawPaths = candidateImages.map((img) => img.url);
-
-      try {
-        const resolvedMap = await resolveChartUrls(rawPaths);
-        payloadImages = candidateImages
-          .map((img) => ({
-            url: resolvedMap[img.url] || img.url,
-            ...(img.caption ? { caption: img.caption } : {}),
-            ...(img.source ? { source: img.source } : {}),
-          }))
-          .filter(
-            (img) =>
-              img.url &&
-              (img.url.startsWith("http://") ||
-                img.url.startsWith("https://") ||
-                img.url.startsWith("data:image/")),
-          );
-      } catch (err) {
-        console.warn("Failed to resolve chart URLs for AI Coach:", err);
-        payloadImages = chatImages
-          .filter((img) => img.url.startsWith("data:image/"))
-          .map((img) => ({
-            url: img.url,
-            ...(img.caption ? { caption: img.caption } : {}),
-            ...(img.source ? { source: img.source } : {}),
-          }));
-      }
-    }
-
     try {
+      const extraPromptInfo = targetTopic
+        ? `\n\n[USER HAS ATTACHED / REFERENCED DIARY TOPIC]: "${targetTopic.title}" (Date: ${targetTopic.date}, Day: ${targetTopic.day}, Session: ${targetTopic.session || "N/A"}). This topic has ${targetTopic.pages.length} page(s) and ${payloadImages.length} attached chart screenshot(s). Focus your analysis or screenshot breakdown specifically on this topic!`
+        : "";
+
       const res = await callCoach({
         data: {
-          question,
+          question: question + extraPromptInfo,
           tradeSummary: buildSummary(question),
           history,
-          isGeneralChat: !isAudit && payloadImages.length === 0,
+          isGeneralChat: !isAudit && payloadImages.length === 0 && !targetTopic,
           images: payloadImages,
         },
       });
@@ -921,7 +1493,16 @@ function AiCoach() {
           s.id === targetSessionId
             ? {
                 ...s,
-                messages: [...s.messages, { role: "assistant", content: res.text }],
+                messages: [
+                  ...s.messages,
+                  {
+                    role: "assistant",
+                    content: res.text,
+                    ...((userWantsToSeeScreenshots || Boolean(targetTopic)) && payloadImages.length > 0
+                      ? { images: payloadImages }
+                      : {}),
+                  },
+                ],
                 updatedAt: Date.now(),
               }
             : s,
@@ -1144,7 +1725,24 @@ function AiCoach() {
         </aside>
 
         {/* Main Chat Area */}
-        <div className="flex flex-1 flex-col min-w-0 min-h-0 overflow-hidden bg-card/60">
+        <div
+          onDragOver={handleDragOverChat}
+          onDragLeave={handleDragLeaveChat}
+          onDrop={handleDropOnChat}
+          className="relative flex flex-1 flex-col min-w-0 min-h-0 overflow-hidden bg-card/60"
+        >
+          {/* Drag & Drop Visual Overlay */}
+          {isDraggingOverChat && (
+            <div className="absolute inset-0 z-40 bg-background/85 backdrop-blur-sm border-2 border-dashed border-primary rounded-2xl flex flex-col items-center justify-center gap-3 p-6 pointer-events-none animate-in fade-in zoom-in-95 duration-150">
+              <div className="size-16 rounded-2xl bg-primary/15 border border-primary/30 text-primary grid place-items-center shadow-lg">
+                <FolderOpen className="size-8" />
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-base font-bold text-foreground">Drop Diary Topic or Screenshot here</p>
+                <p className="text-xs text-muted-foreground">Attach topic instantly to Coach Maverick for deep analysis</p>
+              </div>
+            </div>
+          )}
           {/* Subheader: Sidebar Toggle + Horizontal Tabs Strip + Action Buttons */}
           <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 bg-surface-1/40 shrink-0">
             <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -1349,7 +1947,75 @@ function AiCoach() {
                           : "bg-surface-2 text-foreground w-full max-w-[96%] lg:max-w-[92%] xl:max-w-[88%] border border-border/40",
                       )}
                     >
-                      <FormattedMessage content={displayContent} isUser={m.role === "user"} />
+                      {/* Attached Screenshots Thumbnails */}
+                      {m.images && m.images.length > 0 ? (
+                        <div className="relative mb-2.5 flex flex-wrap gap-2 group/msgimgs">
+                          {m.images.map((img, imgIdx) => {
+                            const displaySrc = signedImageMap[img.url] || img.url;
+                            return (
+                              <div
+                                key={imgIdx}
+                                onClick={() =>
+                                  setLightboxImage({
+                                    url: displaySrc,
+                                    title: img.caption || img.name || `Screenshot #${imgIdx + 1}`,
+                                  })
+                                }
+                                className="group relative cursor-pointer overflow-hidden rounded-xl border border-white/20 bg-black/40 shadow-xs hover:border-white/80 transition-all hover:scale-[1.03]"
+                                title="Click to view full size"
+                              >
+                                <img
+                                  src={displaySrc}
+                                  alt={img.name || `Screenshot #${imgIdx + 1}`}
+                                  className="size-20 sm:size-24 object-cover rounded-lg"
+                                  onError={(e) => {
+                                    if (img.url && e.currentTarget.src !== img.url) {
+                                      e.currentTarget.src = img.url;
+                                    }
+                                  }}
+                                />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                  <Eye className="size-4 text-white" />
+                                </div>
+                                <div className="absolute bottom-0 inset-x-0 bg-black/75 backdrop-blur-xs px-1 py-0.5 text-[9px] text-white font-medium truncate text-center">
+                                  {img.caption || img.name || `#${imgIdx + 1}`}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {m.role === "user" ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSessions((prev) =>
+                                  prev.map((s) =>
+                                    s.id === (activeSession?.id ?? "")
+                                      ? {
+                                          ...s,
+                                          messages: s.messages.map((msg, msgIdx) =>
+                                            msgIdx === i ? { ...msg, images: undefined } : msg,
+                                          ),
+                                          updatedAt: Date.now(),
+                                        }
+                                      : s,
+                                  ),
+                                );
+                              }}
+                              className="opacity-0 group-hover/msgimgs:opacity-100 transition-opacity absolute -top-2 -right-2 p-1 rounded-full bg-black/80 hover:bg-destructive text-white shadow-md"
+                              title="Remove attached screenshots from this message"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      <FormattedMessage
+                        content={displayContent}
+                        isUser={m.role === "user"}
+                        onOpenLightbox={(url, title) => setLightboxImage({ url, title })}
+                      />
 
                       {isPdfRequest && scope ? (
                         <div className="mt-3.5 pt-3 border-t border-border/70">
@@ -1389,6 +2055,24 @@ function AiCoach() {
                               <span>Download PDF</span>
                             </Button>
                           </div>
+                        </div>
+                      ) : null}
+
+                      {/* Interactive Disambiguation Options (e.g. choose between multiple dates or sessions) */}
+                      {m.options && m.options.length > 0 ? (
+                        <div className="mt-3 pt-2.5 border-t border-border/50 flex flex-wrap gap-2">
+                          {m.options.map((opt, optIdx) => (
+                            <Button
+                              key={optIdx}
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void send(opt.actionText)}
+                              className="text-xs h-auto py-1.5 px-3 rounded-xl border-primary/30 hover:bg-primary/10 hover:border-primary/60 text-foreground transition-all shadow-2xs text-left whitespace-normal flex items-center gap-1.5"
+                            >
+                              <span>{opt.label}</span>
+                            </Button>
+                          ))}
                         </div>
                       ) : null}
                     </div>
@@ -1462,6 +2146,31 @@ function AiCoach() {
               </div>
             )}
 
+            {/* Attached Diary Topic Pill Badge */}
+            {attachedTopic && (
+              <div className="mb-2 flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs font-medium animate-in fade-in slide-in-from-bottom-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  <BookOpen className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span className="truncate">
+                    Attached Topic: <strong>&quot;{attachedTopic.title}&quot;</strong> ({attachedTopic.day}, {formatDisplayDate(attachedTopic.date)})
+                    {attachedTopic.pages.flatMap((p) => p.screenshots || []).length > 0 && (
+                      <span className="ml-1 opacity-80">
+                        · {attachedTopic.pages.flatMap((p) => p.screenshots || []).length} charts
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAttachedTopic(null)}
+                  className="p-1 rounded-full hover:bg-amber-500/20 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                  title="Remove attached topic"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* Attached Screenshots preview bar (Ctrl + V / file upload) */}
             {attachedChatImages.length > 0 ? (
               <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
@@ -1518,16 +2227,28 @@ function AiCoach() {
                 void send(input);
               }}
             >
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => chatFileInputRef.current?.click()}
-                title="Attach chart screenshot (or press Ctrl + V anywhere to paste)"
-                className="size-11 shrink-0 rounded-xl border-border bg-surface-2 hover:bg-surface-3 text-muted-foreground hover:text-foreground shadow-xs transition-colors"
-              >
-                <ImageIcon className="size-4.5" />
-              </Button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => chatFileInputRef.current?.click()}
+                  title="Attach chart screenshot (or press Ctrl + V anywhere to paste)"
+                  className="size-11 shrink-0 rounded-xl border-border bg-surface-2 hover:bg-surface-3 text-muted-foreground hover:text-foreground shadow-xs transition-colors"
+                >
+                  <ImageIcon className="size-4.5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setShowJournalPicker(true)}
+                  title="Browse & attach screenshots from Diary & Trades"
+                  className="size-11 shrink-0 rounded-xl border-border bg-surface-2 hover:bg-surface-3 text-muted-foreground hover:text-primary shadow-xs transition-colors"
+                >
+                  <BookOpen className="size-4.5" />
+                </Button>
+              </div>
 
               <Textarea
                 ref={inputRef}
@@ -1557,6 +2278,329 @@ function AiCoach() {
           </div>
         </div>
       </Card>
+
+      {/* Fullscreen Lightbox Preview Modal */}
+      {lightboxImage ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 sm:p-6"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div
+            className="relative max-h-[92vh] max-w-[94vw] sm:max-w-4xl w-full rounded-2xl border border-border bg-card p-3 sm:p-4 shadow-2xl flex flex-col items-center overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between w-full pb-2 mb-2 border-b border-border/70">
+              <span className="text-xs sm:text-sm font-semibold text-foreground truncate pr-2">
+                {lightboxImage.title || "Screenshot Preview"}
+              </span>
+              <button
+                type="button"
+                onClick={() => setLightboxImage(null)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="w-full flex-1 flex items-center justify-center overflow-auto max-h-[80vh] p-1">
+              <img
+                src={signedImageMap[lightboxImage.url] || lightboxImage.url}
+                alt={lightboxImage.title || "Zoomed Screenshot"}
+                className="max-h-full max-w-full object-contain rounded-lg"
+                onError={(e) => {
+                  if (lightboxImage.url && e.currentTarget.src !== lightboxImage.url) {
+                    e.currentTarget.src = lightboxImage.url;
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Attach from Journal (Diary & Trades) Selector Modal */}
+      {showJournalPicker ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setShowJournalPicker(false)}
+        >
+          <div
+            className="relative max-h-[85vh] max-w-2xl w-full rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-2xl flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <BookOpen className="size-4 text-primary" />
+                <h3 className="font-semibold text-sm sm:text-base text-foreground">
+                  Attach Screenshots from Journal
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowJournalPicker(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            {/* Selector Tabs */}
+            <div className="flex items-center gap-2 pt-3 pb-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={journalPickerTab === "topics" ? "default" : "outline"}
+                onClick={() => setJournalPickerTab("topics")}
+                className="text-xs rounded-lg h-8 gap-1.5"
+              >
+                <BookMarked className="size-3.5" />
+                <span>Diary Topics ({allTopicGroups.length})</span>
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={journalPickerTab === "diary" ? "default" : "outline"}
+                onClick={() => setJournalPickerTab("diary")}
+                className="text-xs rounded-lg h-8"
+              >
+                All Screenshots
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={journalPickerTab === "trades" ? "default" : "outline"}
+                onClick={() => setJournalPickerTab("trades")}
+                className="text-xs rounded-lg h-8"
+              >
+                Trade Charts
+              </Button>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto space-y-2.5 py-3 pr-1 max-h-[55vh]">
+              {journalPickerTab === "topics" ? (
+                (() => {
+                  const queryClean = cleanForComparison(topicSearchQuery);
+                  const filtered = allTopicGroups.filter((tg) => {
+                    if (!queryClean) return true;
+                    return (
+                      cleanForComparison(tg.title).includes(queryClean) ||
+                      tg.date.includes(queryClean) ||
+                      (tg.session && cleanForComparison(tg.session).includes(queryClean)) ||
+                      cleanForComparison(tg.day).includes(queryClean)
+                    );
+                  });
+
+                  return (
+                    <div className="space-y-3">
+                      {/* Search Bar */}
+                      <input
+                        type="text"
+                        value={topicSearchQuery}
+                        onChange={(e) => setTopicSearchQuery(e.target.value)}
+                        placeholder="Search diary topics by title or date..."
+                        className="w-full px-3 py-2 rounded-xl bg-surface-2 border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                      />
+
+                      {filtered.length === 0 ? (
+                        <div className="text-center py-10 text-muted-foreground text-xs">
+                          No diary topics matched your search.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2.5">
+                          {filtered.map((tg) => {
+                            const scCount = tg.pages.flatMap((p) => p.screenshots || []).length;
+                            const firstPageText = tg.pages[0]?.content
+                              ? tg.pages[0].content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120)
+                              : "";
+
+                            return (
+                              <div
+                                key={tg.topicKey}
+                                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-surface-1 hover:border-primary/50 transition-colors"
+                              >
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                                    <span className="font-semibold text-amber-600 dark:text-amber-400">
+                                      {tg.day}, {formatDisplayDate(tg.date)}
+                                    </span>
+                                    {tg.session && (
+                                      <span className="px-1.5 py-0.5 rounded bg-surface-2 text-muted-foreground">
+                                        {tg.session}
+                                      </span>
+                                    )}
+                                    <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                                      {tg.pages.length} page{tg.pages.length > 1 ? "s" : ""}
+                                    </span>
+                                    {scCount > 0 && (
+                                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium">
+                                        📷 {scCount} screenshot{scCount > 1 ? "s" : ""}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs sm:text-sm font-semibold text-foreground truncate">
+                                    {tg.title}
+                                  </p>
+                                  {firstPageText && (
+                                    <p className="text-[11px] text-muted-foreground line-clamp-1 italic">
+                                      &quot;{firstPageText}…&quot;
+                                    </p>
+                                  )}
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => {
+                                    setAttachedTopic(tg);
+                                    setShowJournalPicker(false);
+                                    toast.success(`Attached Topic: "${tg.title}"`);
+                                  }}
+                                  className="h-8 text-xs rounded-xl shrink-0 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+                                >
+                                  <BookOpen className="size-3.5" />
+                                  <span>Attach Topic</span>
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
+              ) : journalPickerTab === "diary" ? (
+                (() => {
+                  const items: Array<{ url: string; caption?: string | undefined; title: string; date: string }> = [];
+                  for (const entry of diaryEntries) {
+                    if (entry.screenshots && entry.screenshots.length > 0) {
+                      for (const sc of entry.screenshots) {
+                        if (sc.url) {
+                          items.push({
+                            url: sc.url,
+                            caption: sc.caption,
+                            title: entry.title || "Diary Page",
+                            date: `${entry.day}, ${entry.date}`,
+                          });
+                        }
+                      }
+                    }
+                  }
+                  if (items.length === 0) {
+                    return (
+                      <div className="text-center py-10 text-muted-foreground text-xs">
+                        No diary screenshots found yet. Add screenshots in your Trader Diary first!
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {items.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-3 p-2.5 rounded-xl border border-border bg-surface-1 hover:border-primary/50 transition-colors"
+                        >
+                          <img
+                            src={signedImageMap[item.url] || item.url}
+                            alt="Screenshot"
+                            className="size-14 rounded-lg object-cover shrink-0 border border-border"
+                            onError={(e) => {
+                              if (item.url && e.currentTarget.src !== item.url) {
+                                e.currentTarget.src = item.url;
+                              }
+                            }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-foreground truncate">
+                              {item.title}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground truncate">
+                              {item.date}
+                            </p>
+                            {item.caption ? (
+                              <p className="text-[10px] text-primary/80 truncate italic">
+                                &quot;{item.caption}&quot;
+                              </p>
+                            ) : null}
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => void handleAttachJournalScreenshot(item.url, item.caption || item.title)}
+                            className="h-7 text-[11px] rounded-lg shrink-0 px-2.5"
+                          >
+                            Attach
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()
+              ) : (
+                (() => {
+                  const items: Array<{ url: string; symbol: string; direction: string; date: string }> = [];
+                  for (const t of trades) {
+                    if (t.charts && t.charts.length > 0) {
+                      for (const c of t.charts) {
+                        if (c) {
+                          items.push({
+                            url: c,
+                            symbol: t.symbol,
+                            direction: t.direction,
+                            date: formatDate(t.date),
+                          });
+                        }
+                      }
+                    }
+                  }
+                  if (items.length === 0) {
+                    return (
+                      <div className="text-center py-10 text-muted-foreground text-xs">
+                        No trade charts found yet. Attach charts when logging your trades!
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {items.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-3 p-2.5 rounded-xl border border-border bg-surface-1 hover:border-primary/50 transition-colors"
+                        >
+                          <img
+                            src={signedImageMap[item.url] || item.url}
+                            alt="Chart"
+                            className="size-14 rounded-lg object-cover shrink-0 border border-border"
+                            onError={(e) => {
+                              if (item.url && e.currentTarget.src !== item.url) {
+                                e.currentTarget.src = item.url;
+                              }
+                            }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-foreground truncate">
+                              {item.symbol} {item.direction.toUpperCase()}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground truncate">
+                              {item.date}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => void handleAttachJournalScreenshot(item.url, `${item.symbol} ${item.direction}`)}
+                            className="h-7 text-[11px] rounded-lg shrink-0 px-2.5"
+                          >
+                            Attach
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AppLayout>
   );
 }

@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 420" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="420" fill="url(#bg)" rx="16"/>
+  <rect width="798" height="418" x="1" y="1" fill="none" stroke="#334155" stroke-width="1.5" rx="15"/>
+
+  <!-- Title -->
+  <text x="36" y="44" fill="#f8fafc" font-size="18" font-weight="700" font-family="system-ui, -apple-system, sans-serif">BREAKOUT AND RETEST BLUEPRINT</text>
+  <rect x="36" y="56" width="220" height="22" rx="4" fill="#3b82f6" fill-opacity="0.15" stroke="#3b82f6" stroke-width="1"/>
+  <text x="46" y="71" fill="#60a5fa" font-size="11" font-weight="600" font-family="system-ui, sans-serif">SUPPORT / RESISTANCE FLIP (S/R)</text>
+
+  <!-- Key Level (Resistance turned Support) -->
+  <line x1="80" y1="210" x2="720" y2="210" stroke="#f59e0b" stroke-width="2.5"/>
+  <rect x="80" y="180" width="170" height="24" rx="4" fill="#f59e0b" fill-opacity="0.2" stroke="#f59e0b" stroke-width="1"/>
+  <text x="88" y="196" fill="#fbbf24" font-size="11" font-weight="700" font-family="system-ui">RESISTANCE LEVEL (CEILING)</text>
+
+  <rect x="530" y="218" width="180" height="24" rx="4" fill="#10b981" fill-opacity="0.2" stroke="#10b981" stroke-width="1"/>
+  <text x="538" y="234" fill="#34d399" font-size="11" font-weight="700" font-family="system-ui">NEW SUPPORT LEVEL (FLOOR)</text>
+
+  <!-- Price Wave -->
+  <!-- Bounce 1 -> Reject 1 -> Bounce 2 -> Breakout -> Peak -> Retest -> Expansion -->
+  <polyline points="90,320 180,210 260,280 370,120 450,110 520,208 650,80 730,70" fill="none" stroke="#38bdf8" stroke-width="3.5" stroke-linejoin="round"/>
+
+  <!-- Rejection 1 -->
+  <circle cx="180" cy="210" r="5" fill="#f43f5e"/>
+  <text x="145" y="170" fill="#fca5a5" font-size="11" font-weight="700" font-family="system-ui">1. Rejection</text>
+
+  <!-- Breakout Impulse -->
+  <circle cx="330" cy="210" r="6" fill="#10b981"/>
+  <rect x="290" y="230" width="130" height="24" rx="4" fill="#10b981" fill-opacity="0.2" stroke="#10b981" stroke-width="1"/>
+  <text x="298" y="246" fill="#6ee7b7" font-size="11" font-weight="700" font-family="system-ui">2. CLEAN BREAKOUT</text>
+
+  <!-- Retest Confirmation -->
+  <circle cx="520" cy="208" r="8" fill="#10b981"/>
+  <path d="M 520 235 L 520 220" stroke="#10b981" stroke-width="2"/>
+  <rect x="440" y="250" width="160" height="45" rx="6" fill="#10b981" fill-opacity="0.25" stroke="#10b981" stroke-width="1.5"/>
+  <text x="450" y="270" fill="#6ee7b7" font-size="11" font-weight="800" font-family="system-ui">3. RETEST ENTRY</text>
+  <text x="450" y="285" fill="#a7f3d0" font-size="10" font-family="system-ui">Wait for rejection wick!</text>
+
+  <!-- SL Box -->
+  <line x1="480" y1="245" x2="600" y2="245" stroke="#f43f5e" stroke-width="2" stroke-dasharray="3,3"/>
+  <text x="610" y="249" fill="#fca5a5" font-size="11" font-weight="700" font-family="system-ui">🛑 SL Below Retest</text>
+
+  <!-- Expansion Target -->
+  <circle cx="730" cy="70" r="6" fill="#10b981"/>
+  <rect x="630" y="35" width="130" height="24" rx="4" fill="#10b981" fill-opacity="0.2" stroke="#10b981" stroke-width="1"/>
+  <text x="638" y="51" fill="#6ee7b7" font-size="11" font-weight="700" font-family="system-ui">🏆 EXPANSION TARGET</text>
+</svg>
+
