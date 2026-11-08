@@ -18,6 +18,7 @@ import { Route as AuthenticatedAiCoachRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedCalculatorRouteImport } from './routes/_authenticated/calculator'
 import { Route as AuthenticatedDiaryRouteImport } from './routes/_authenticated/diary'
+import { Route as AuthenticatedLiveChartRouteImport } from './routes/_authenticated/live-chart'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedRulesRouteImport } from './routes/_authenticated/rules'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
@@ -68,6 +69,11 @@ const AuthenticatedDiaryRoute = AuthenticatedDiaryRouteImport.update({
   path: '/diary',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedLiveChartRoute = AuthenticatedLiveChartRouteImport.update({
+  id: '/live-chart',
+  path: '/live-chart',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/calculator': typeof AuthenticatedCalculatorRoute
   '/diary': typeof AuthenticatedDiaryRoute
+  '/live-chart': typeof AuthenticatedLiveChartRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/rules': typeof AuthenticatedRulesRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -119,6 +126,7 @@ export interface FileRoutesByTo {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/calculator': typeof AuthenticatedCalculatorRoute
   '/diary': typeof AuthenticatedDiaryRoute
+  '/live-chart': typeof AuthenticatedLiveChartRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/rules': typeof AuthenticatedRulesRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -136,6 +144,7 @@ export interface FileRoutesById {
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/calculator': typeof AuthenticatedCalculatorRoute
   '/_authenticated/diary': typeof AuthenticatedDiaryRoute
+  '/_authenticated/live-chart': typeof AuthenticatedLiveChartRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/rules': typeof AuthenticatedRulesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
@@ -154,6 +163,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/calculator'
     | '/diary'
+    | '/live-chart'
     | '/profile'
     | '/rules'
     | '/settings'
@@ -168,6 +178,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/calculator'
     | '/diary'
+    | '/live-chart'
     | '/profile'
     | '/rules'
     | '/settings'
@@ -184,6 +195,7 @@ export interface FileRouteTypes {
     | '/_authenticated/analytics'
     | '/_authenticated/calculator'
     | '/_authenticated/diary'
+    | '/_authenticated/live-chart'
     | '/_authenticated/profile'
     | '/_authenticated/rules'
     | '/_authenticated/settings'
@@ -262,6 +274,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDiaryRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/live-chart': {
+      id: '/_authenticated/live-chart'
+      path: '/live-chart'
+      fullPath: '/live-chart'
+      preLoaderRoute: typeof AuthenticatedLiveChartRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/profile': {
       id: '/_authenticated/profile'
       path: '/profile'
@@ -307,6 +326,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedCalculatorRoute: typeof AuthenticatedCalculatorRoute
   AuthenticatedDiaryRoute: typeof AuthenticatedDiaryRoute
+  AuthenticatedLiveChartRoute: typeof AuthenticatedLiveChartRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedRulesRoute: typeof AuthenticatedRulesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
@@ -322,6 +342,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedCalculatorRoute: AuthenticatedCalculatorRoute,
   AuthenticatedDiaryRoute: AuthenticatedDiaryRoute,
+  AuthenticatedLiveChartRoute: AuthenticatedLiveChartRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedRulesRoute: AuthenticatedRulesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,

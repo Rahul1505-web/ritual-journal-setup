@@ -928,6 +928,25 @@ function AiCoach() {
   // Clean up any remaining legacy auto-attached screenshots from user messages on mount
   useEffect(() => {
     setSessions((prev) => sanitizeSessionMessages(prev));
+
+    try {
+      const raw = sessionStorage.getItem("coach_prefilled_screenshot");
+      if (raw) {
+        sessionStorage.removeItem("coach_prefilled_screenshot");
+        const data = JSON.parse(raw);
+        if (data.url) {
+          setAttachedChatImages((prev) => [
+            ...prev,
+            {
+              id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              url: data.url,
+              name: data.name || "Footprint Chart",
+            },
+          ]);
+          toast.info("Attached Live Footprint chart to AI Coach!");
+        }
+      }
+    } catch {}
   }, []);
 
   // Focus rename input on entering edit mode

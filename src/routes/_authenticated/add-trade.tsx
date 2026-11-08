@@ -84,9 +84,21 @@ function AddTrade() {
   const [charts, setCharts] = useState<string[]>([]);
   const [lightbox, setLightbox] = useState<number | null>(null);
 
-  // Prefill fields if directed from Position Size Calculator
+  // Prefill fields if directed from Position Size Calculator or Live Footprint Terminal
   useEffect(() => {
     try {
+      const rawFootprint = sessionStorage.getItem("prefilled_chart_screenshot");
+      if (rawFootprint) {
+        sessionStorage.removeItem("prefilled_chart_screenshot");
+        const data = JSON.parse(rawFootprint);
+        if (data.symbol) setSymbol(String(data.symbol));
+        setMarket("Crypto");
+        if (data.direction) setDirection(data.direction === "long" ? "BUY" : "SELL");
+        if (data.entry) setEntry(String(data.entry));
+        if (data.url) setCharts([data.url]);
+        toast.info("Prefilled live footprint chart & entry price!");
+      }
+
       const raw = sessionStorage.getItem("calculator_prefill");
       if (raw) {
         sessionStorage.removeItem("calculator_prefill");
