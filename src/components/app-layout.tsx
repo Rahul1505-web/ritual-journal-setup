@@ -35,7 +35,6 @@ import {
 
 const NAV = [
   { to: "/", label: "Dashboard", exact: true, icon: LayoutDashboard },
-  { to: "/live-chart", label: "Live Chart", exact: false, icon: CandlestickChart },
   { to: "/add-trade", label: "Add Trade", exact: false, icon: PlusCircle },
   { to: "/trade-log", label: "Trade Log", exact: false, icon: TableProperties },
   { to: "/analytics", label: "Analytics", exact: false, icon: BarChart3 },
