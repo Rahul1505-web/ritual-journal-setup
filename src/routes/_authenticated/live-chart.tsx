@@ -1,195 +1,119 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { AppLayout } from "@/components/app-layout";
-import { FootprintCanvas, type FootprintCanvasRef } from "@/components/footprint/FootprintCanvas";
-import { FootprintToolbar } from "@/components/footprint/FootprintToolbar";
-import { SnapSetupModal } from "@/components/footprint/SnapSetupModal";
-import { OrderFlowEngine } from "@/lib/order-flow/order-flow-engine";
-import type {
-  FootprintCandle,
-  FootprintPriceLevel,
-  MarketTicker,
-  OrderFlowSettings,
-} from "@/lib/order-flow/types";
 
 export const Route = createFileRoute("/_authenticated/live-chart")({
   head: () => ({
     meta: [
-      { title: "Live BTC Footprint & Order Flow Terminal — TradeLog Pro" },
+      { title: "Live Charts — TradeLog Pro" },
       {
         name: "description",
-        content:
-          "Real-time institutional Bitcoin footprint chart, Bid x Ask volume clusters, Point of Control (POC), Cumulative Volume Delta (CVD) and imbalance detection.",
+        content: "Real-time TradingView charts for Bitcoin (BTC), Gold (XAU), and WTI Crude Oil.",
       },
     ],
   }),
   component: LiveChartPage,
 });
 
-function LiveChartPage() {
-  const canvasRef = useRef<FootprintCanvasRef>(null);
+const CHARTS = [
+  { symbol: "BINANCE:BTCUSDT", label: "BTC / USDT", id: "btc" },
+  { symbol: "TVC:GOLD", label: "XAU / USD  ·  Gold", id: "xau" },
+  { symbol: "TVC:USOIL", label: "WTI Crude Oil", id: "oil" },
+];
 
-  // Default Order Flow Settings
-  const [settings, setSettings] = useState<OrderFlowSettings>({
-    symbol: "BTCUSDT",
-    interval: "1m",
-    tickSize: 10,
-    imbalanceRatio: 3.0,
-    minImbalanceQty: 0.05,
-    displayMode: "bidxask",
-    showPoc: true,
-    showCvd: true,
-    showStackedImbalances: true,
-    clusterColorTheme: "classic",
-  });
-
-  // Live State
-  const [candles, setCandles] = useState<FootprintCandle[]>([]);
-  const [ticker, setTicker] = useState<MarketTicker | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<
-    "connecting" | "connected" | "reconnecting" | "disconnected"
-  >("connecting");
-
-  // Hovered Level Info
-  const [hoveredLevelInfo, setHoveredLevelInfo] = useState<{
-    candle: FootprintCandle;
-    level: FootprintPriceLevel;
-    price: number;
-  } | null>(null);
-
-  // Snap & Log Modal
-  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
-
-  // Initialize OrderFlowEngine instance
-  const engine = useMemo(() => new OrderFlowEngine(settings), [settings.symbol, settings.interval]);
+function TradingViewChart({
+  symbol,
+  label,
+  containerId,
+}: {
+  symbol: string;
+  label: string;
+  containerId: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Sync settings if changed (e.g. tickSize, ratio)
-    engine.updateSettings(settings);
-  }, [settings, engine]);
+    if (!ref.current) return;
 
-  useEffect(() => {
-    const unsubCandles = engine.onCandles((updated) => setCandles(updated));
-    const unsubTicker = engine.onTicker((updated) => setTicker(updated));
-    const unsubConn = engine.onConnection((status) => setConnectionStatus(status));
+    // Clear any previous widget
+    ref.current.innerHTML = "";
 
-    void engine.start();
+    const widgetContainer = document.createElement("div");
+    widgetContainer.className = "tradingview-widget-container";
+    widgetContainer.style.height = "100%";
+    widgetContainer.style.width = "100%";
+
+    const widgetDiv = document.createElement("div");
+    widgetDiv.className = "tradingview-widget-container__widget";
+    widgetDiv.style.height = "calc(100% - 32px)";
+    widgetDiv.style.width = "100%";
+    widgetContainer.appendChild(widgetDiv);
+
+    const script = document.createElement("script");
+    script.src =
+      "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+    script.async = true;
+    script.type = "text/javascript";
+    script.innerHTML = JSON.stringify({
+      autosize: true,
+      symbol,
+      interval: "15",
+      timezone: "Asia/Kolkata",
+      theme: "dark",
+      style: "1",
+      locale: "en",
+      enable_publishing: false,
+      allow_symbol_change: true,
+      hide_top_toolbar: false,
+      hide_legend: false,
+      save_image: true,
+      withdateranges: true,
+      details: false,
+      hotlist: false,
+      calendar: false,
+      support_host: "https://www.tradingview.com",
+    });
+    widgetContainer.appendChild(script);
+
+    ref.current.appendChild(widgetContainer);
 
     return () => {
-      unsubCandles();
-      unsubTicker();
-      unsubConn();
-      engine.stop();
-    };
-  }, [engine]);
-
-  const handleUpdateSettings = (newSettings: Partial<OrderFlowSettings>) => {
-    setSettings((prev) => ({ ...prev, ...newSettings }));
-  };
-
-  const handleSnapSetup = () => {
-    if (canvasRef.current) {
-      const dataUrl = canvasRef.current.captureScreenshot();
-      if (dataUrl) {
-        setSnapshotUrl(dataUrl);
+      if (ref.current) {
+        ref.current.innerHTML = "";
       }
-    }
-  };
-
-  const lastCandle = candles[candles.length - 1];
-  const currentDelta = lastCandle ? lastCandle.delta : undefined;
+    };
+  }, [symbol]);
 
   return (
+    <div className="flex flex-col rounded-2xl border border-border overflow-hidden bg-[#131722] shadow-lg">
+      {/* Chart header label */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/60 bg-[#1a1f2e] shrink-0">
+        <span className="size-2 rounded-full bg-primary shrink-0" />
+        <span className="text-xs font-semibold text-foreground tracking-wide">
+          {label}
+        </span>
+      </div>
+      {/* TradingView widget mount point */}
+      <div ref={ref} style={{ height: "480px", width: "100%" }} />
+    </div>
+  );
+}
+
+function LiveChartPage() {
+  return (
     <AppLayout
-      title="Live Footprint Terminal"
-      subtitle="Real-time institutional Order Flow, Bid × Ask clusters & Cumulative Volume Delta (CVD)"
-      fullHeight
+      title="Live Charts"
+      subtitle="Real-time BTC · Gold (XAU) · WTI Oil — powered by TradingView"
     >
-      <div className="flex flex-col flex-1 h-[calc(100vh-4.5rem)] min-h-[500px] overflow-hidden bg-[#07080b] rounded-2xl border border-border/80 shadow-2xl relative">
-        {/* Footprint Controls & Ticker Header */}
-        <FootprintToolbar
-          settings={settings}
-          ticker={ticker}
-          connectionStatus={connectionStatus}
-          currentDelta={currentDelta}
-          onUpdateSettings={handleUpdateSettings}
-          onSnapSetup={handleSnapSetup}
-        />
-
-        {/* Main Footprint Canvas */}
-        <div className="flex-1 relative min-h-0 overflow-hidden">
-          <FootprintCanvas
-            ref={canvasRef}
-            candles={candles}
-            settings={settings}
-            livePrice={ticker?.price}
-            onHoverLevel={setHoveredLevelInfo}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        {CHARTS.map((c) => (
+          <TradingViewChart
+            key={c.id}
+            symbol={c.symbol}
+            label={c.label}
+            containerId={c.id}
           />
-
-          {/* Hover Level Inspector Pill (Floats in top left of chart) */}
-          {hoveredLevelInfo && (
-            <div className="absolute top-3 left-3 z-20 flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-surface-1/90 backdrop-blur-md border border-border shadow-lg font-mono text-xs animate-in fade-in">
-              <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground text-[11px]">Level:</span>
-                <span className="font-bold text-foreground">
-                  ${hoveredLevelInfo.level.price.toLocaleString()}
-                </span>
-              </div>
-              <div className="h-3 w-px bg-border/80" />
-              <div className="flex items-center gap-1 text-rose-400">
-                <span className="text-[10px] opacity-75">Bid:</span>
-                <span className="font-semibold">{hoveredLevelInfo.level.bidVolume.toFixed(2)}</span>
-              </div>
-              <span className="text-muted-foreground/60">×</span>
-              <div className="flex items-center gap-1 text-emerald-400">
-                <span className="text-[10px] opacity-75">Ask:</span>
-                <span className="font-semibold">{hoveredLevelInfo.level.askVolume.toFixed(2)}</span>
-              </div>
-              <div className="h-3 w-px bg-border/80" />
-              <div
-                className={`font-semibold ${
-                  hoveredLevelInfo.level.delta >= 0 ? "text-emerald-400" : "text-rose-400"
-                }`}
-              >
-                Δ {hoveredLevelInfo.level.delta >= 0 ? "+" : ""}
-                {hoveredLevelInfo.level.delta.toFixed(2)}
-              </div>
-
-              {hoveredLevelInfo.level.isBuyImbalance && (
-                <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold text-[10px] border border-emerald-500/30">
-                  BUY IMBALANCE
-                </span>
-              )}
-              {hoveredLevelInfo.level.isSellImbalance && (
-                <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 font-bold text-[10px] border border-rose-500/30">
-                  SELL IMBALANCE
-                </span>
-              )}
-              {hoveredLevelInfo.level.price === hoveredLevelInfo.candle.pocPrice && (
-                <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 font-bold text-[10px] border border-amber-500/30">
-                  POC
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Quick Guidance Footer Note */}
-          <div className="absolute bottom-2 left-3 z-10 pointer-events-none text-[10px] text-muted-foreground/50 font-mono">
-            <span>Scroll: Zoom candles · Shift+Scroll: Zoom price · Drag: Pan · Left: Bid (Sellers) × Right: Ask (Buyers) · Gold Box: POC</span>
-          </div>
-        </div>
-
-        {/* Snap Setup Modal */}
-        {snapshotUrl && ticker && (
-          <SnapSetupModal
-            screenshotUrl={snapshotUrl}
-            symbol={settings.symbol}
-            price={ticker.price}
-            delta={currentDelta || 0}
-            interval={settings.interval}
-            onClose={() => setSnapshotUrl(null)}
-          />
-        )}
+        ))}
       </div>
     </AppLayout>
   );
