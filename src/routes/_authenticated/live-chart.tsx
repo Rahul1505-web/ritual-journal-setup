@@ -1,7 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppLayout } from "@/components/app-layout";
-import { Maximize2, Minimize2, Palette, X } from "lucide-react";
+import {
+  ExternalLink,
+  Grid2X2,
+  Maximize2,
+  Minimize2,
+  Monitor,
+  Sparkles,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/live-chart")({
@@ -18,124 +25,71 @@ export const Route = createFileRoute("/_authenticated/live-chart")({
   component: LiveChartPage,
 });
 
-/* ─────────────────────────── Types ─────────────────────────── */
-interface ChartColors {
-  upColor: string;
-  downColor: string;
-  borderUpColor: string;
-  borderDownColor: string;
-  wickUpColor: string;
-  wickDownColor: string;
-  background: string;
-}
-
-const DEFAULT_COLORS: ChartColors = {
-  upColor: "#26a69a",
-  downColor: "#ef5350",
-  borderUpColor: "#26a69a",
-  borderDownColor: "#ef5350",
-  wickUpColor: "#26a69a",
-  wickDownColor: "#ef5350",
-  background: "#131722",
-};
-
-const CHARTS = [
-  { symbol: "BINANCE:BTCUSDT", label: "BTC / USDT", id: "btc", accent: "#f7931a" },
-  { symbol: "TVC:GOLD", label: "XAU / USD  ·  Gold", id: "xau", accent: "#ffd700" },
-  { symbol: "TVC:USOIL", label: "WTI Crude Oil", id: "oil", accent: "#6cb4ee" },
+/* ─────────────────────────── Symbols & Themes ─────────────────────────── */
+const PRESET_CHARTS = [
+  {
+    id: "btc",
+    symbol: "BINANCE:BTCUSDT",
+    label: "BTC / USDT",
+    tvSymbol: "BINANCE:BTCUSDT",
+    accent: "#f7931a",
+    category: "Crypto",
+  },
+  {
+    id: "xau",
+    symbol: "TVC:GOLD",
+    label: "XAU / USD · Gold",
+    tvSymbol: "TVC:GOLD",
+    accent: "#ffd700",
+    category: "Commodities",
+  },
+  {
+    id: "oil",
+    symbol: "TVC:USOIL",
+    label: "WTI Crude Oil",
+    tvSymbol: "TVC:USOIL",
+    accent: "#38bdf8",
+    category: "Commodities",
+  },
 ];
 
-/* ─────────────────── Color Picker Panel ──────────────────────── */
-function ColorPanel({
-  colors,
-  onChange,
-  onClose,
-}: {
-  colors: ChartColors;
-  onChange: (c: ChartColors) => void;
-  onClose: () => void;
-}) {
-  const fields: { key: keyof ChartColors; label: string }[] = [
-    { key: "upColor", label: "Bull Candle Body" },
-    { key: "downColor", label: "Bear Candle Body" },
-    { key: "borderUpColor", label: "Bull Border" },
-    { key: "borderDownColor", label: "Bear Border" },
-    { key: "wickUpColor", label: "Bull Wick" },
-    { key: "wickDownColor", label: "Bear Wick" },
-    { key: "background", label: "Chart Background" },
-  ];
+const BG_THEMES = [
+  { id: "tv-dark", label: "TV Classic", bg: "#131722", border: "#2a2e39" },
+  { id: "pitch-black", label: "OLED Black", bg: "#000000", border: "#1f242d" },
+  { id: "deep-navy", label: "Deep Navy", bg: "#0b0f19", border: "#1e293b" },
+  { id: "slate", label: "Slate Dark", bg: "#0f172a", border: "#334155" },
+];
 
-  return (
-    <div className="absolute top-12 right-2 z-50 w-64 rounded-2xl border border-border bg-surface-1 shadow-2xl p-4 animate-in fade-in slide-in-from-top-2">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-semibold text-foreground">Chart Colors</span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="grid size-6 place-items-center rounded-lg hover:bg-surface-2 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <X className="size-3.5" />
-        </button>
-      </div>
-
-      <div className="space-y-2.5">
-        {fields.map(({ key, label }) => (
-          <div key={key} className="flex items-center justify-between gap-3">
-            <label className="text-[11px] text-muted-foreground leading-tight">{label}</label>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-mono text-muted-foreground/70">
-                {colors[key]}
-              </span>
-              <label className="relative cursor-pointer">
-                <span
-                  className="block size-6 rounded-md border-2 border-border shadow-inner cursor-pointer"
-                  style={{ backgroundColor: colors[key] }}
-                />
-                <input
-                  type="color"
-                  value={colors[key]}
-                  onChange={(e) => onChange({ ...colors, [key]: e.target.value })}
-                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                />
-              </label>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <button
-        type="button"
-        onClick={() => onChange(DEFAULT_COLORS)}
-        className="mt-3 w-full rounded-lg border border-border py-1.5 text-[11px] font-medium text-muted-foreground hover:bg-surface-2 hover:text-foreground transition-colors"
-      >
-        Reset to Default
-      </button>
-    </div>
-  );
-}
+type BgTheme = (typeof BG_THEMES)[number];
+type PresetChart = (typeof PRESET_CHARTS)[number];
 
 /* ─────────────────── TradingView Chart Card ───────────────────── */
 function TradingViewChart({
   symbol,
   label,
+  tvSymbol,
   accent,
-  colors,
+  bgTheme,
+  height = "560px",
+  allowChangeSymbol = true,
 }: {
   symbol: string;
   label: string;
+  tvSymbol: string;
   accent: string;
-  colors: ChartColors;
+  bgTheme: BgTheme;
+  height?: string;
+  allowChangeSymbol?: boolean;
 }) {
   const widgetRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showColors, setShowColors] = useState(false);
-  const [localColors, setLocalColors] = useState<ChartColors>(colors);
 
-  // Sync when parent colors change
-  useEffect(() => {
-    setLocalColors(colors);
-  }, [colors]);
+  const openFullTradingView = () => {
+    // Opens TradingView's full web application with right-click settings, alerts, orders, templates
+    const url = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   const buildWidget = useCallback(() => {
     if (!widgetRef.current) return;
@@ -148,7 +102,7 @@ function TradingViewChart({
 
     const inner = document.createElement("div");
     inner.className = "tradingview-widget-container__widget";
-    inner.style.height = "calc(100% - 32px)";
+    inner.style.height = "100%";
     inner.style.width = "100%";
     container.appendChild(inner);
 
@@ -165,35 +119,28 @@ function TradingViewChart({
       theme: "dark",
       style: "1",
       locale: "en",
+      backgroundColor: bgTheme.bg,
+      gridColor: "rgba(255, 255, 255, 0.04)",
       enable_publishing: false,
-      allow_symbol_change: true,
-      /* ── Show all tools ── */
+      allow_symbol_change: allowChangeSymbol,
+      /* ── Full Tools ── */
       hide_top_toolbar: false,
-      hide_side_toolbar: false,  // ← drawing tools: pencil, lines, rectangle, fib etc.
+      hide_side_toolbar: false, // Drawings: pencil, trend lines, fib, boxes, measure
       hide_legend: false,
       save_image: true,
       withdateranges: true,
+      show_popup_button: true,
+      popup_width: "1280",
+      popup_height: "800",
       details: false,
       hotlist: false,
       calendar: false,
       support_host: "https://www.tradingview.com",
-      /* ── Candle & background color overrides ── */
-      overrides: {
-        "mainSeriesProperties.candleStyle.upColor": localColors.upColor,
-        "mainSeriesProperties.candleStyle.downColor": localColors.downColor,
-        "mainSeriesProperties.candleStyle.borderUpColor": localColors.borderUpColor,
-        "mainSeriesProperties.candleStyle.borderDownColor": localColors.borderDownColor,
-        "mainSeriesProperties.candleStyle.wickUpColor": localColors.wickUpColor,
-        "mainSeriesProperties.candleStyle.wickDownColor": localColors.wickDownColor,
-        "paneProperties.background": localColors.background,
-        "paneProperties.backgroundType": "solid",
-      },
     });
     container.appendChild(script);
     widgetRef.current.appendChild(container);
-  }, [symbol, localColors]);
+  }, [symbol, bgTheme, allowChangeSymbol]);
 
-  // Rebuild widget whenever colors or symbol change
   useEffect(() => {
     buildWidget();
     return () => {
@@ -221,48 +168,57 @@ function TradingViewChart({
     return () => document.removeEventListener("fullscreenchange", handler);
   }, []);
 
-  const handleColorsChange = (c: ChartColors) => {
-    setLocalColors(c);
-  };
-
   return (
     <div
       ref={cardRef}
       className={cn(
-        "flex flex-col rounded-2xl border border-border overflow-hidden shadow-lg bg-[#131722] relative",
-        isFullscreen && "rounded-none border-none",
+        "flex flex-col rounded-2xl border overflow-hidden shadow-xl transition-all duration-200 relative",
+        isFullscreen ? "rounded-none border-none h-screen w-screen" : "",
       )}
+      style={{
+        backgroundColor: bgTheme.bg,
+        borderColor: bgTheme.border,
+      }}
     >
-      {/* Header */}
+      {/* Chart Toolbar Header */}
       <div
-        className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border/60 shrink-0"
-        style={{ backgroundColor: `${accent}18` }}
+        className="flex items-center justify-between gap-3 px-4 py-2.5 border-b shrink-0 select-none"
+        style={{
+          borderColor: bgTheme.border,
+          backgroundColor: `${accent}12`,
+        }}
       >
-        <div className="flex items-center gap-2">
-          <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: accent }} />
-          <span className="text-xs font-semibold text-foreground tracking-wide">{label}</span>
+        <div className="flex items-center gap-2.5">
+          <span
+            className="size-2.5 rounded-full shrink-0 shadow-sm animate-pulse"
+            style={{ backgroundColor: accent }}
+          />
+          <span className="text-xs font-semibold tracking-wide text-foreground">
+            {label}
+          </span>
+          <span className="hidden sm:inline-block rounded-md bg-white/5 px-2 py-0.5 font-mono text-[10px] text-muted-foreground border border-white/10">
+            {symbol}
+          </span>
         </div>
 
-        <div className="flex items-center gap-1">
-          {/* Color palette button */}
+        <div className="flex items-center gap-1.5">
+          {/* Direct TradingView Native App Launch Button */}
           <button
             type="button"
-            title="Customize candle colors"
-            onClick={() => setShowColors((v) => !v)}
-            className={cn(
-              "grid size-7 place-items-center rounded-lg border border-border/60 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground",
-              showColors && "bg-primary/20 text-primary border-primary/40",
-            )}
+            onClick={openFullTradingView}
+            className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 px-2.5 py-1 text-[11px] font-medium text-primary transition-all shadow-sm"
+            title="Open official TradingView web page for this chart with full Right-Click Settings, Cloud Templates, Alerts, and Broker Execution"
           >
-            <Palette className="size-3.5" />
+            <span>Open in TradingView</span>
+            <ExternalLink className="size-3" />
           </button>
 
-          {/* Fullscreen button */}
+          {/* Fullscreen Expand Button */}
           <button
             type="button"
-            title={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
+            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen View"}
             onClick={toggleFullscreen}
-            className="grid size-7 place-items-center rounded-lg border border-border/60 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+            className="grid size-7 place-items-center rounded-lg border border-border/80 bg-surface-1 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
           >
             {isFullscreen ? (
               <Minimize2 className="size-3.5" />
@@ -273,20 +229,11 @@ function TradingViewChart({
         </div>
       </div>
 
-      {/* Color panel */}
-      {showColors && (
-        <ColorPanel
-          colors={localColors}
-          onChange={handleColorsChange}
-          onClose={() => setShowColors(false)}
-        />
-      )}
-
-      {/* TradingView widget */}
+      {/* Widget Container */}
       <div
         ref={widgetRef}
         style={{
-          height: isFullscreen ? "calc(100vh - 48px)" : "520px",
+          height: isFullscreen ? "calc(100vh - 44px)" : height,
           width: "100%",
         }}
       />
@@ -296,23 +243,158 @@ function TradingViewChart({
 
 /* ─────────────────────── Page ─────────────────────────────────── */
 function LiveChartPage() {
-  const [globalColors] = useState<ChartColors>(DEFAULT_COLORS);
+  const [viewMode, setViewMode] = useState<"grid" | "focus">("grid");
+  const [focusedId, setFocusedId] = useState<string>("btc");
+  const [activeBgTheme, setActiveBgTheme] = useState<BgTheme>(BG_THEMES[0]!);
+
+  const focusedChart: PresetChart =
+    PRESET_CHARTS.find((c) => c.id === focusedId) ?? PRESET_CHARTS[0]!;
 
   return (
     <AppLayout
       title="Live Charts"
       subtitle="Real-time BTC · Gold (XAU) · WTI Oil — powered by TradingView"
     >
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        {CHARTS.map((c) => (
-          <TradingViewChart
-            key={c.id}
-            symbol={c.symbol}
-            label={c.label}
-            accent={c.accent}
-            colors={globalColors}
-          />
-        ))}
+      <div className="flex flex-col gap-4">
+        {/* Top Control Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface-1/80 p-3 backdrop-blur-md">
+          {/* View Mode Toggle: Grid vs Focus */}
+          <div className="flex items-center gap-1 rounded-xl border border-border/80 bg-surface-2 p-1">
+            <button
+              type="button"
+              onClick={() => setViewMode("grid")}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
+                viewMode === "grid"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Grid2X2 className="size-3.5" />
+              <span>3-Chart Grid</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode("focus")}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
+                viewMode === "focus"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Monitor className="size-3.5" />
+              <span>Single Chart (Maximized)</span>
+            </button>
+          </div>
+
+          {/* Focused Asset Switcher Pills (Visible when in Focus mode) */}
+          {viewMode === "focus" && (
+            <div className="flex items-center gap-1.5">
+              {PRESET_CHARTS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setFocusedId(c.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all",
+                    focusedId === c.id
+                      ? "border-primary/50 bg-primary/15 text-primary font-semibold shadow-sm"
+                      : "border-border/60 bg-surface-2 text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <span
+                    className="size-2 rounded-full shrink-0"
+                    style={{ backgroundColor: c.accent }}
+                  />
+                  <span>{c.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Background Theme Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground hidden md:inline">
+              Background:
+            </span>
+            <div className="flex items-center gap-1">
+              {BG_THEMES.map((theme) => (
+                <button
+                  key={theme.id}
+                  type="button"
+                  onClick={() => setActiveBgTheme(theme)}
+                  title={`Switch to ${theme.label}`}
+                  className={cn(
+                    "flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] transition-all",
+                    activeBgTheme.id === theme.id
+                      ? "border-primary text-primary bg-primary/10 font-medium"
+                      : "border-border/60 text-muted-foreground hover:text-foreground hover:bg-surface-2",
+                  )}
+                >
+                  <span
+                    className="size-2.5 rounded-full border border-white/20 shrink-0"
+                    style={{ backgroundColor: theme.bg }}
+                  />
+                  <span className="text-[10px]">{theme.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Info Banner Explaining Full TradingView Integration */}
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Sparkles className="size-4 text-primary shrink-0" />
+            <span>
+              All drawing tools (Pencil, Fibonacci, Trendlines, Rectangles, Long/Short) are available on the left toolbar. Click <strong>"Open in TradingView"</strong> on any chart for right-click Settings, custom candle colors, cloud templates, and alerts.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              window.open(
+                "https://www.tradingview.com/chart/?symbol=BINANCE:BTCUSDT",
+                "_blank",
+                "noopener,noreferrer",
+              )
+            }
+            className="hidden md:flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline shrink-0"
+          >
+            Launch Web App <ExternalLink className="size-3" />
+          </button>
+        </div>
+
+        {/* Charts View */}
+        {viewMode === "grid" ? (
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+            {PRESET_CHARTS.map((c) => (
+              <TradingViewChart
+                key={c.id}
+                symbol={c.symbol}
+                label={c.label}
+                tvSymbol={c.tvSymbol}
+                accent={c.accent}
+                bgTheme={activeBgTheme}
+                height="540px"
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="w-full">
+            <TradingViewChart
+              key={focusedChart.id}
+              symbol={focusedChart.symbol}
+              label={focusedChart.label}
+              tvSymbol={focusedChart.tvSymbol}
+              accent={focusedChart.accent}
+              bgTheme={activeBgTheme}
+              height="750px"
+            />
+          </div>
+        )}
       </div>
     </AppLayout>
   );
