@@ -8,6 +8,10 @@ import {
   Minimize2,
   Monitor,
   Sparkles,
+  Star,
+  Info,
+  X,
+  GripVertical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -123,7 +127,7 @@ function TradingViewChart({
       gridColor: "rgba(255, 255, 255, 0.04)",
       enable_publishing: false,
       allow_symbol_change: allowChangeSymbol,
-      /* ── Full Tools ── */
+      /* ── Full Tools & Drawing Toolbars ── */
       hide_top_toolbar: false,
       hide_side_toolbar: false, // Drawings: pencil, trend lines, fib, boxes, measure
       hide_legend: false,
@@ -136,6 +140,25 @@ function TradingViewChart({
       hotlist: false,
       calendar: false,
       support_host: "https://www.tradingview.com",
+      /* ── Favorites & Tool Starring Features ── */
+      enabled_features: [
+        "items_favoriting",
+        "show_favorite_drawing_tools_toolbar",
+        "side_toolbar_in_fullscreen_mode",
+        "header_settings",
+      ],
+      disabled_features: [],
+      favorites: {
+        drawingTools: [
+          "LineToolTrendLine",
+          "LineToolRay",
+          "LineToolFibRetracement",
+          "LineToolRectangle",
+          "LineToolBrush",
+          "LineToolText",
+          "LineToolCallout",
+        ],
+      },
     });
     container.appendChild(script);
     widgetRef.current.appendChild(container);
@@ -207,7 +230,7 @@ function TradingViewChart({
             type="button"
             onClick={openFullTradingView}
             className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 px-2.5 py-1 text-[11px] font-medium text-primary transition-all shadow-sm"
-            title="Open official TradingView web page for this chart with full Right-Click Settings, Cloud Templates, Alerts, and Broker Execution"
+            title="Open official TradingView web page with starred favorites, Right-Click Settings, Cloud Templates, Alerts, and Broker Execution"
           >
             <span>Open in TradingView</span>
             <ExternalLink className="size-3" />
@@ -246,6 +269,7 @@ function LiveChartPage() {
   const [viewMode, setViewMode] = useState<"grid" | "focus">("grid");
   const [focusedId, setFocusedId] = useState<string>("btc");
   const [activeBgTheme, setActiveBgTheme] = useState<BgTheme>(BG_THEMES[0]!);
+  const [showStarGuide, setShowStarGuide] = useState<boolean>(false);
 
   const focusedChart: PresetChart =
     PRESET_CHARTS.find((c) => c.id === focusedId) ?? PRESET_CHARTS[0]!;
@@ -314,42 +338,141 @@ function LiveChartPage() {
             </div>
           )}
 
-          {/* Background Theme Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-muted-foreground hidden md:inline">
-              Background:
-            </span>
-            <div className="flex items-center gap-1">
-              {BG_THEMES.map((theme) => (
-                <button
-                  key={theme.id}
-                  type="button"
-                  onClick={() => setActiveBgTheme(theme)}
-                  title={`Switch to ${theme.label}`}
-                  className={cn(
-                    "flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] transition-all",
-                    activeBgTheme.id === theme.id
-                      ? "border-primary text-primary bg-primary/10 font-medium"
-                      : "border-border/60 text-muted-foreground hover:text-foreground hover:bg-surface-2",
-                  )}
-                >
-                  <span
-                    className="size-2.5 rounded-full border border-white/20 shrink-0"
-                    style={{ backgroundColor: theme.bg }}
-                  />
-                  <span className="text-[10px]">{theme.label}</span>
-                </button>
-              ))}
+          {/* Action Tools & Theme Selector */}
+          <div className="flex items-center gap-3">
+            {/* Star Tool Guide Button */}
+            <button
+              type="button"
+              onClick={() => setShowStarGuide((v) => !v)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all",
+                showStarGuide
+                  ? "border-amber-400/50 bg-amber-400/15 text-amber-300 font-semibold shadow-sm"
+                  : "border-border/60 bg-surface-2 text-muted-foreground hover:text-foreground",
+              )}
+              title="How to Star & Pin favorite drawing tools into the floating toolbar"
+            >
+              <Star className={cn("size-3.5", showStarGuide ? "fill-amber-400 text-amber-400" : "text-amber-400")} />
+              <span>Favorite Tools Bar Guide</span>
+            </button>
+
+            {/* Background Theme Selector */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-muted-foreground hidden lg:inline">
+                Background:
+              </span>
+              <div className="flex items-center gap-1">
+                {BG_THEMES.map((theme) => (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    onClick={() => setActiveBgTheme(theme)}
+                    title={`Switch to ${theme.label}`}
+                    className={cn(
+                      "flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] transition-all",
+                      activeBgTheme.id === theme.id
+                        ? "border-primary text-primary bg-primary/10 font-medium"
+                        : "border-border/60 text-muted-foreground hover:text-foreground hover:bg-surface-2",
+                    )}
+                  >
+                    <span
+                      className="size-2.5 rounded-full border border-white/20 shrink-0"
+                      style={{ backgroundColor: theme.bg }}
+                    />
+                    <span className="text-[10px]">{theme.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Favorite Drawings Interactive Guide Banner */}
+        {showStarGuide && (
+          <div className="relative rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-surface-1 to-surface-1 p-4 shadow-xl animate-in fade-in slide-in-from-top-2">
+            <button
+              type="button"
+              onClick={() => setShowStarGuide(false)}
+              className="absolute top-3 right-3 grid size-6 place-items-center rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-foreground transition-colors"
+            >
+              <X className="size-4" />
+            </button>
+
+            <div className="flex items-start gap-3">
+              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-amber-400/20 text-amber-400 border border-amber-400/30">
+                <Star className="size-5 fill-amber-400" />
+              </span>
+              <div className="flex-1 min-w-0 pr-6">
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <span>How to Star Tools to create your Floating Favorites Toolbar:</span>
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                  TradingView lets you pin your most-used drawing tools (Trendlines, Fibonacci, Rectangles, Brush, Text) into the floating quick-access bar shown in your screenshot.
+                </p>
+
+                {/* Steps Grid */}
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2.5">
+                  <div className="rounded-xl border border-border/70 bg-surface-2/60 p-2.5">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <span className="grid size-5 place-items-center rounded-full bg-primary/20 text-primary text-[10px]">1</span>
+                      <span>Left Toolbar</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Hover over any tool icon on the left (e.g. Lines, Fib, Shapes).
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-border/70 bg-surface-2/60 p-2.5">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <span className="grid size-5 place-items-center rounded-full bg-primary/20 text-primary text-[10px]">2</span>
+                      <span>Click Arrow (▶)</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Click the small arrow next to the tool to expand its flyout list.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-border/70 bg-surface-2/60 p-2.5">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <span className="grid size-5 place-items-center rounded-full bg-amber-400/20 text-amber-300 text-[10px]">3</span>
+                      <span>Click the Star (⭐)</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Hover over any drawing tool in the list and click the Star icon on the right!
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-border/70 bg-surface-2/60 p-2.5">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <span className="grid size-5 place-items-center rounded-full bg-emerald-400/20 text-emerald-300 text-[10px]">4</span>
+                      <span>Floating Bar Appears!</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Drag the 6-dot handle (<GripVertical className="inline size-3" />) to move your favorites bar anywhere on the screen!
+                    </p>
+                  </div>
+                </div>
+
+                {/* Pro tip */}
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-2 text-[11px] text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    <Info className="size-3.5 text-primary shrink-0" />
+                    <span>
+                      Tip: Clicking <strong>"Open in TradingView"</strong> on any chart syncs all your starred favorite tools directly to your personal TradingView cloud account!
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Info Banner Explaining Full TradingView Integration */}
         <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             <Sparkles className="size-4 text-primary shrink-0" />
             <span>
-              All drawing tools (Pencil, Fibonacci, Trendlines, Rectangles, Long/Short) are available on the left toolbar. Click <strong>"Open in TradingView"</strong> on any chart for right-click Settings, custom candle colors, cloud templates, and alerts.
+              All drawing tools are active. Hover over any tool on the left toolbar & click the <strong>Star (⭐)</strong> to show your floating Favorites Toolbar.
             </span>
           </div>
           <button
